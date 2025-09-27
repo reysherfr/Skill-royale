@@ -5,7 +5,7 @@ document.getElementById('registerForm').addEventListener('submit', async functio
   const msg = document.getElementById('registerMsg');
   msg.textContent = '';
   try {
-    const res = await fetch('http://localhost:3000/register', {
+  const res = await fetch('https://skill-royale.onrender.com/register', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ nick, password })
@@ -32,7 +32,7 @@ document.getElementById('loginForm').addEventListener('submit', async function(e
   const msg = document.getElementById('loginMsg');
   msg.textContent = '';
   try {
-    const res = await fetch('http://localhost:3000/login', {
+  const res = await fetch('https://skill-royale.onrender.com/login', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ nick, password })
