@@ -50,10 +50,10 @@ socket.on('playersUpdate', (serverPlayers) => {
       changed = true;
     }
     local.health = sp.health;
-    // Don't update position for local player during movement to avoid prediction conflicts
+    // Para jugadores remotos, actualizar solo la posición objetivo
     if (sp.nick !== user.nick) {
-      local.x = sp.x;
-      local.y = sp.y;
+      local.targetX = sp.x;
+      local.targetY = sp.y;
     }
     local.speed = sp.speed;
     local.speedBoostUntil = sp.speedBoostUntil || 0;
@@ -620,6 +620,12 @@ function gameLoop(timestamp) {
   const dt = timestamp - lastTime;
   lastTime = timestamp;
   updateMovement(dt);
+  // Interpolar posición de jugadores remotos para suavizar movimiento
+  for (let player of players) {
+    if (!player.isLocal) {
+      player.interpolatePosition(0.2); // Puedes ajustar el alpha para más/menos suavidad
+    }
+  }
   // Actualizar proyectiles
   for (let p of proyectiles.values()) {
     p.update(16);
