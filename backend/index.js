@@ -1,4 +1,3 @@
-
 import express from 'express';
 import bodyParser from 'body-parser';
 import sqlite3 from 'sqlite3';
@@ -532,7 +531,14 @@ io.on('connection', (socket) => {
 });
 
 app.use(bodyParser.json());
-app.use(cors());
+app.use(cors({
+  origin: [
+    'https://skill-royale.vercel.app',
+    'http://localhost:3000',
+    'https://skill-royale.onrender.com'
+  ],
+  credentials: true
+}));
 app.use(express.static(path.join(__dirname, '../frontend')));
 
 // Inicializar base de datos SQLite
