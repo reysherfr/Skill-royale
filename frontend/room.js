@@ -257,11 +257,11 @@ socket.on('explosion', (data) => {
 });
 let sala = null;
 let availableUpgrades = null; // Mejoras disponibles para elegir en ronda 1
+
 let movement = { w: false, a: false, s: false, d: false };
-let moveInterval = null;
-// Interceptar el movimiento para bloquear por colisión con muro
-if (moveInterval) clearInterval(moveInterval);
-moveInterval = setInterval(() => {
+let gameLoopId = null;
+
+function updateMovement() {
   const localPlayer = players.find(p => p.nick === user.nick);
   if (!localPlayer || localPlayer.defeated) return;
   let nextX = localPlayer.x;
@@ -305,8 +305,17 @@ moveInterval = setInterval(() => {
     localPlayer.x = Math.max(0, Math.min(nextX, MAP_WIDTH));
     localPlayer.y = Math.max(0, Math.min(nextY, MAP_HEIGHT));
   }
-}, 16);
-let gameLoopId = null;
+}
+
+function gameLoop() {
+  updateMovement();
+  // Aquí puedes agregar otras actualizaciones por frame si es necesario
+  gameLoopId = requestAnimationFrame(gameLoop);
+}
+
+// Iniciar el bucle principal del juego
+if (gameLoopId) cancelAnimationFrame(gameLoopId);
+gameLoop();
 
 // --- Disparo de proyectiles y cooldowns ---
 let lastFireTime = 0;
