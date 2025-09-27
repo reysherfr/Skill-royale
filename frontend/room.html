@@ -1,0 +1,35 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>BatlesD - Sala</title>
+  <link href="https://fonts.googleapis.com/css2?family=Roboto:wght@500&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <div class="container">
+    <h1>Sala</h1>
+    <div id="roomInfo" style="margin-bottom:24px; text-align:center;"></div>
+    <div class="form-box" id="playersBox" style="margin-bottom:24px;">
+      <h2>Jugadores en la sala</h2>
+      <div id="playersList"></div>
+    </div>
+    <div class="form-box" style="text-align:center;">
+      <button id="startBtn" style="display:none;">Iniciar</button>
+      <button id="exitBtn" style="background:#d32f2f;">Salir</button>
+    </div>
+    <div id="upgradePanel" style="display:none; position:absolute; top:10px; right:10px; background:#fff; padding:10px; border:1px solid #000;">
+      <h3>Upgrades</h3>
+      <p>Time: <span id="timeDisplay">0:00</span></p>
+      <p>Gold: <span id="goldDisplay">0</span></p>
+      <button id="upgradeHealth">+20 Health (50 gold)</button><br>
+      <button id="upgradeDamage">+5 Damage (50 gold)</button><br>
+      <button id="upgradeSpeed">+1 Speed (50 gold)</button>
+    </div>
+  </div>
+  <canvas id="gameCanvas" style="display:none; width:100vw; height:100vh;"></canvas>
+  <script src="https://cdn.socket.io/4.7.2/socket.io.min.js"></script>
+  <script type="module" src="room.js"></script>
+</body>
+</html>

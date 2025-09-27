@@ -1,0 +1,34 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>BatlesD - Registro e Inicio de Sesión</title>
+  <link href="https://fonts.googleapis.com/css2?family=Roboto:wght@500&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <div class="container">
+    <h1>BatlesD</h1>
+    <div class="form-box">
+      <h2>Registro</h2>
+      <form id="registerForm">
+        <input type="text" id="registerNick" placeholder="Nick" required>
+        <input type="password" id="registerPassword" placeholder="Contraseña" required>
+        <button type="submit">Registrarse</button>
+        <div id="registerMsg" class="msg"></div>
+      </form>
+    </div>
+    <div class="form-box">
+      <h2>Inicio de Sesión</h2>
+      <form id="loginForm">
+        <input type="text" id="loginNick" placeholder="Nick" required>
+        <input type="password" id="loginPassword" placeholder="Contraseña" required>
+        <button type="submit">Iniciar Sesión</button>
+        <div id="loginMsg" class="msg"></div>
+      </form>
+    </div>
+  </div>
+  <script src="script.js"></script>
+</body>
+</html>

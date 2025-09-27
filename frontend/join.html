@@ -1,0 +1,26 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>BatlesD - Unirse a Sala</title>
+  <link href="https://fonts.googleapis.com/css2?family=Roboto:wght@500&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <div class="container">
+    <h1>Salas Disponibles</h1>
+    <div class="form-box" id="roomsBox" style="margin-bottom:24px;">
+      <h2>Lista de Salas</h2>
+      <div id="roomsList">
+        <div style="color:#b0c4de;">No hay salas disponibles.</div>
+      </div>
+    </div>
+    <div class="form-box" style="text-align:center;">
+      <button id="exitBtn" style="background:#d32f2f;">Salir</button>
+    </div>
+  </div>
+  <script src="https://cdn.socket.io/4.7.2/socket.io.min.js"></script>
+  <script src="join.js"></script>
+</body>
+</html>
