@@ -129,6 +129,9 @@ let hudInterval = null;
 let hudVisible = false;
 let hud = null;
 let lastTime = 0;
+let fps = 0;
+let frameCount = 0;
+let lastFpsUpdate = 0;
 let keys = { w: false, a: false, s: false, d: false };
 let lastQFireTime = 0;
 let mouseX = 0, mouseY = 0;
@@ -565,9 +568,17 @@ function updateMovement(dt) {
   // No hacer nada aquí para el movimiento local
 }
 
-function gameLoop(timestamp) {
-  const dt = timestamp - lastTime;
-  lastTime = timestamp;
+function gameLoop() {
+  const now = performance.now();
+  const dt = now - lastTime;
+  lastTime = now;
+  frameCount++;
+  if (now - lastFpsUpdate >= 1000) {
+    fps = frameCount;
+    frameCount = 0;
+    lastFpsUpdate = now;
+    document.getElementById('fps-counter').textContent = `FPS: ${fps}`;
+  }
   updateMovement(dt);
   // Actualizar proyectiles
   for (let p of proyectiles.values()) {
@@ -582,13 +593,13 @@ function gameLoop(timestamp) {
   }
   drawMap();
   drawPlayers();
-  gameLoopId = requestAnimationFrame(gameLoop);
+   gameLoopId = setTimeout(gameLoop, 0);
 }
 
 function initGame() {
   // Limpiar intervalos anteriores para evitar acumulación
   if (gameLoopId) {
-    cancelAnimationFrame(gameLoopId);
+    clearTimeout(gameLoopId);
     gameLoopId = null;
   }
   // Mostrar HUD de selección de mejora solo si NO es reinicio de ronda
@@ -598,6 +609,18 @@ function initGame() {
   // No resetear mostrarSoloProyectilQ aquí, mantener el estado de la ronda
   canvas = document.getElementById('gameCanvas');
   ctx = canvas.getContext('2d');
+  // Create FPS counter div
+  const fpsDiv = document.createElement('div');
+  fpsDiv.id = 'fps-counter';
+  fpsDiv.style.position = 'absolute';
+  fpsDiv.style.top = '10px';
+  fpsDiv.style.left = '10px';
+  fpsDiv.style.color = 'white';
+  fpsDiv.style.font = '20px Arial';
+  fpsDiv.style.background = 'black';
+  fpsDiv.style.padding = '5px';
+  fpsDiv.style.zIndex = '1000';
+  document.body.appendChild(fpsDiv);
   resizeCanvas();
   mostrarHUDRondas();
   // Crear jugadores usando la clase Player
@@ -624,7 +647,11 @@ function initGame() {
       canvas.style.cursor = 'default';
     }
   });
-  gameLoopId = requestAnimationFrame(gameLoop);
+  lastTime = performance.now();
+  frameCount = 0;
+  fps = 0;
+  lastFpsUpdate = performance.now();
+  gameLoop();
   window.addEventListener('resize', () => {
     resizeCanvas();
     // drawMap();
