@@ -557,7 +557,7 @@ function mostrarHUDMejoras(soloProyectilQ = false) {
   }
   hudVisible = true;
   mejoraSeleccionada = null;
-  hudTimer = 4;
+  hudTimer = 15;
   let selectedButton = null; // Para resaltar el botón seleccionado
   // Si ya existe un HUD, elimínalo completamente y limpia el intervalo anterior
   if (hudInterval) {
