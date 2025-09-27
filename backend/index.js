@@ -20,7 +20,7 @@ app.get('/', (req, res) => {
 });
 // const db = new sqlite3.Database('users.db');
 const port = 3000;
-const DEFAULT_SPEED = 0.9;
+const DEFAULT_SPEED = 1.5;
 // Contador para IDs de proyectiles
 let projectileIdCounter = 0;
 
@@ -65,6 +65,7 @@ io.on('connection', (socket) => {
   });
 
   // Loop de movimiento server-authoritative (60 FPS)
+  // Loop de movimiento server-authoritative (50 FPS)
   setInterval(() => {
     for (const sala of salas.filter(s => s.active)) {
       for (const player of sala.players) {
@@ -80,7 +81,7 @@ io.on('connection', (socket) => {
           dx /= length;
           dy /= length;
           // Calcular nueva posición
-          const moveDistance = (player.speed || DEFAULT_SPEED) * (16 / 16); // 16ms por frame
+          const moveDistance = (player.speed || DEFAULT_SPEED) * (20 / 16); // 20ms por frame
           let newX = player.x + dx * moveDistance;
           let newY = player.y + dy * moveDistance;
           // Limitar a los bordes del mapa
@@ -118,7 +119,7 @@ io.on('connection', (socket) => {
         io.to(sala.id).emit('playerMoved', { nick: player.nick, x: player.x, y: player.y });
       }
     }
-  }, 16); // 60 FPS
+  }, 20); // 50 FPS
   socket.on('joinRoom', (roomId) => {
     socket.join(roomId);
   });
