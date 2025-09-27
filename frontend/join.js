@@ -1,3 +1,6 @@
+// Determine server URL based on environment
+const SERVER_URL = window.location.hostname === 'localhost' ? 'http://localhost:3000' : 'https://skill-royale.onrender.com';
+
 // Verificar usuario logueado
 const user = JSON.parse(localStorage.getItem('batlesd_user'));
 if (!user) {
@@ -17,7 +20,7 @@ socket.on('roomsUpdated', () => {
 
 async function cargarSalas() {
   try {
-  const res = await fetch('http://localhost:3000/rooms');
+  const res = await fetch(`${SERVER_URL}/rooms`);
     const data = await res.json();
     if (data.success && data.salas.length > 0) {
       roomsList.innerHTML = '';
@@ -35,7 +38,7 @@ async function cargarSalas() {
         btn.addEventListener('click', async function() {
           const roomId = this.dataset.roomid;
           try {
-            const res = await fetch('http://localhost:3000/join-room', {
+            const res = await fetch(`${SERVER_URL}/join-room`, {
               method: 'POST',
               headers: { 'Content-Type': 'application/json' },
               body: JSON.stringify({ id: roomId, nick: user.nick, nivel: user.nivel })

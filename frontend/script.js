@@ -1,3 +1,6 @@
+// Determine server URL based on environment
+const SERVER_URL = window.location.hostname === 'localhost' ? 'http://localhost:3000' : 'https://skill-royale.onrender.com';
+
 document.getElementById('registerForm').addEventListener('submit', async function(e) {
   e.preventDefault();
   const nick = document.getElementById('registerNick').value;
@@ -5,7 +8,7 @@ document.getElementById('registerForm').addEventListener('submit', async functio
   const msg = document.getElementById('registerMsg');
   msg.textContent = '';
   try {
-  const res = await fetch('http://localhost:3000/register', {
+  const res = await fetch(`${SERVER_URL}/register`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ nick, password })
@@ -32,7 +35,7 @@ document.getElementById('loginForm').addEventListener('submit', async function(e
   const msg = document.getElementById('loginMsg');
   msg.textContent = '';
   try {
-  const res = await fetch('http://localhost:3000/login', {
+  const res = await fetch(`${SERVER_URL}/login`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ nick, password })

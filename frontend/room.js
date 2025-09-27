@@ -1,4 +1,7 @@
-const socket = io('http://localhost:3000');
+// Determine server URL based on environment
+const SERVER_URL = window.location.hostname === 'localhost' ? 'http://localhost:3000' : 'https://skill-royale.onrender.com';
+
+const socket = io(SERVER_URL);
 
 const user = JSON.parse(localStorage.getItem('batlesd_user'));
 const roomId = localStorage.getItem('batlesd_room_id');
@@ -1630,7 +1633,7 @@ async function cargarSala() {
   currentRound = 1;
   // No mostrar HUD de rondas aquí, solo cuando se inicie la partida
   try {
-  const res = await fetch('http://localhost:3000/rooms');
+  const res = await fetch(`${SERVER_URL}/rooms`);
     const data = await res.json();
     if (data.success) {
       sala = data.salas.find(s => s.id === roomId);
@@ -1657,7 +1660,7 @@ startBtn.addEventListener('click', () => {
 document.getElementById('exitBtn').addEventListener('click', () => {
   if (sala && user.nick === sala.host.nick) {
     // Eliminar la sala en el backend
-  fetch('http://localhost:3000/delete-room', {
+  fetch(`${SERVER_URL}/delete-room`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ id: roomId })
@@ -1667,7 +1670,7 @@ document.getElementById('exitBtn').addEventListener('click', () => {
     });
   } else {
     // Eliminar jugador de la sala en el backend
-  fetch('http://localhost:3000/leave-room', {
+  fetch(`${SERVER_URL}/leave-room`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ id: roomId, nick: user.nick })

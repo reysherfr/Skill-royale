@@ -1,3 +1,6 @@
+// Determine server URL based on environment
+const SERVER_URL = window.location.hostname === 'localhost' ? 'http://localhost:3000' : 'https://skill-royale.onrender.com';
+
 // Mostrar el nick del usuario
 let user = JSON.parse(localStorage.getItem('batlesd_user'));
 const welcomeMsg = document.getElementById('welcomeMsg');
@@ -5,7 +8,7 @@ const welcomeMsg = document.getElementById('welcomeMsg');
 async function actualizarStatsUsuario() {
   if (!user || !user.nick) return;
   try {
-  const res = await fetch(`http://localhost:3000/stats/${user.nick}`);
+  const res = await fetch(`${SERVER_URL}/stats/${user.nick}`);
     const data = await res.json();
     if (data.success && data.stats) {
       user.exp = data.stats.exp;
@@ -55,7 +58,7 @@ logoutBtn.addEventListener('click', () => {
 const hostBtn = document.getElementById('hostBtn');
 hostBtn.addEventListener('click', async () => {
   try {
-  const res = await fetch('http://localhost:3000/create-room', {
+  const res = await fetch(`${SERVER_URL}/create-room`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ nick: user.nick, nivel: user.nivel })
@@ -88,7 +91,7 @@ async function mostrarStats() {
   // Consultar stats actualizados del backend
   let stats = { exp: 0, nick: user.nick, nivel: user.nivel || 1 };
   try {
-  const res = await fetch(`http://localhost:3000/stats/${user.nick}`);
+  const res = await fetch(`${SERVER_URL}/stats/${user.nick}`);
     const data = await res.json();
     if (data.success && data.stats) {
       stats = { ...stats, ...data.stats };
