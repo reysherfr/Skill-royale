@@ -20,7 +20,7 @@ app.get('/', (req, res) => {
 });
 // const db = new sqlite3.Database('users.db');
 const port = 3000;
-const DEFAULT_SPEED = 5;
+const DEFAULT_SPEED = 0.9;
 // Contador para IDs de proyectiles
 let projectileIdCounter = 0;
 
@@ -53,6 +53,72 @@ const io = new Server(server, {
 });
 
 io.on('connection', (socket) => {
+  // Recibir estado de teclas de movimiento desde el cliente
+  socket.on('keyState', (data) => {
+    const { roomId, nick, key, pressed } = data;
+    const sala = salas.find(s => s.id === roomId && s.active);
+    if (!sala) return;
+    const player = sala.players.find(p => p.nick === nick);
+    if (!player) return;
+    if (!player.keyStates) player.keyStates = { w: false, a: false, s: false, d: false };
+    player.keyStates[key] = pressed;
+  });
+
+  // Loop de movimiento server-authoritative (60 FPS)
+  setInterval(() => {
+    for (const sala of salas.filter(s => s.active)) {
+      for (const player of sala.players) {
+        if (!player.keyStates) continue;
+        let dx = 0, dy = 0;
+        if (player.keyStates.w) dy -= 1;
+        if (player.keyStates.s) dy += 1;
+        if (player.keyStates.a) dx -= 1;
+        if (player.keyStates.d) dx += 1;
+        if (dx !== 0 || dy !== 0) {
+          // Normalizar movimiento diagonal
+          const length = Math.sqrt(dx * dx + dy * dy);
+          dx /= length;
+          dy /= length;
+          // Calcular nueva posición
+          const moveDistance = (player.speed || DEFAULT_SPEED) * (16 / 16); // 16ms por frame
+          let newX = player.x + dx * moveDistance;
+          let newY = player.y + dy * moveDistance;
+          // Limitar a los bordes del mapa
+          newX = Math.max(0, Math.min(2000, newX));
+          newY = Math.max(0, Math.min(1200, newY));
+          // Verificar colisión con muros de piedra
+          let puedeMover = true;
+          if (murosPorSala[sala.id]) {
+            for (const muro of murosPorSala[sala.id]) {
+              const mejora = MEJORAS.find(m => m.id === 'muro_piedra');
+              if (mejora && mejora.colision) {
+                const cos = Math.cos(-muro.angle);
+                const sin = Math.sin(-muro.angle);
+                const relX = newX - muro.x;
+                const relY = newY - muro.y;
+                const localX = relX * cos - relY * sin;
+                const localY = relX * sin + relY * cos;
+                const rx = muro.width + 32;
+                const ry = muro.height + 32;
+                if ((localX * localX) / (rx * rx) + (localY * localY) / (ry * ry) <= 1) {
+                  puedeMover = false;
+                  break;
+                }
+              }
+            }
+          }
+          if (puedeMover) {
+            player.x = newX;
+            player.y = newY;
+          }
+        }
+      }
+      // Emitir posiciones actualizadas a todos los clientes
+      for (const player of sala.players) {
+        io.to(sala.id).emit('playerMoved', { nick: player.nick, x: player.x, y: player.y });
+      }
+    }
+  }, 16); // 60 FPS
   socket.on('joinRoom', (roomId) => {
     socket.join(roomId);
   });

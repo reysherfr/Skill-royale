@@ -560,47 +560,9 @@ function iniciarCombate() {
   enableProjectileShooting();
 }
 
+// El movimiento ahora es calculado en el backend. Solo enviamos las teclas presionadas.
 function updateMovement(dt) {
-  if (dt === 0 || dt > 100) return; // Skip invalid dt values
-  
-  const localPlayer = players.find(p => p.nick === user.nick);
-  if (!localPlayer) return;
-  
-  let dx = 0;
-  let dy = 0;
-  
-  if (keys.w) dy -= 1;
-  if (keys.s) dy += 1;
-  if (keys.a) dx -= 1;
-  if (keys.d) dx += 1;
-  
-  if (dx !== 0 || dy !== 0) {
-    // Normalize diagonal movement
-    const length = Math.sqrt(dx * dx + dy * dy);
-    dx /= length;
-    dy /= length;
-    
-    // Move based on speed and time
-    const moveDistance = localPlayer.speed * (dt / 16); // Assuming 60 FPS baseline
-    const newX = localPlayer.x + dx * moveDistance;
-    const newY = localPlayer.y + dy * moveDistance;
-    
-    // Check bounds locally first
-    const clampedX = Math.max(0, Math.min(MAP_WIDTH, newX));
-    const clampedY = Math.max(0, Math.min(MAP_HEIGHT, newY));
-    
-    // Update local position immediately for smooth movement (client-side prediction)
-    localPlayer.x = clampedX;
-    localPlayer.y = clampedY;
-    
-    // Send movement every frame for smooth movement
-    socket.emit('movePlayer', {
-      roomId: roomId,
-      nick: user.nick,
-      x: clampedX,
-      y: clampedY
-    });
-  }
+  // No hacer nada aquí para el movimiento local
 }
 
 function gameLoop(timestamp) {
@@ -671,6 +633,7 @@ function initGame() {
 }
 
 function drawMap() {
+  if (!ctx || !canvas) return;
   ctx.clearRect(0, 0, canvas.width, canvas.height);
   // Cámara centrada en el jugador local
   const localPlayer = players.find(p => p.nick === user.nick);
@@ -1155,15 +1118,22 @@ function drawRock(x, y, r) {
 
 
 function handleKeyDown(e) {
-    if (hudVisible) return; // No permitir lanzar habilidades si HUD está activo
-    const key = e.key.toLowerCase();
-    
-    // Movement keys
-    if (key === 'w' || key === 'a' || key === 's' || key === 'd') {
-        keys[key] = true;
-        e.preventDefault(); // Prevent default browser behavior
-        return;
+  if (hudVisible) return; // No permitir lanzar habilidades si HUD está activo
+  const key = e.key.toLowerCase();
+  // Movement keys
+  if (key === 'w' || key === 'a' || key === 's' || key === 'd') {
+    if (!keys[key]) {
+      keys[key] = true;
+      socket.emit('keyState', {
+        roomId: roomId,
+        nick: user.nick,
+        key: key,
+        pressed: true
+      });
     }
+    e.preventDefault(); // Prevent default browser behavior
+    return;
+  }
     
     // Habilidad tipo proyectilE: activación según activacionRapida
     if (key === 'e') {
@@ -1513,7 +1483,15 @@ function handleKeyUp(e) {
   const key = e.key.toLowerCase();
   // Movement keys
   if (key === 'w' || key === 'a' || key === 's' || key === 'd') {
-    keys[key] = false;
+    if (keys[key]) {
+      keys[key] = false;
+      socket.emit('keyState', {
+        roomId: roomId,
+        nick: user.nick,
+        key: key,
+        pressed: false
+      });
+    }
   }
 }
 

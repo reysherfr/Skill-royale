@@ -4,7 +4,7 @@
 
 
 export class Player {
-  constructor({ nick, x = 0, y = 0, color = '#2a5298', isLocal = false, speed = 5, mejoras = [] }) {
+  constructor({ nick, x = 0, y = 0, color = '#2a5298', isLocal = false, speed = 2, mejoras = [] }) {
     this.nick = nick;
     this.x = x;
     this.y = y;
