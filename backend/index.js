@@ -5,8 +5,12 @@ import sqlite3 from 'sqlite3';
 import cors from 'cors';
 import { createServer } from 'http';
 import { Server } from 'socket.io';
-import { Player, DEFAULT_SPEED } from '../frontend/players.js';
+import path from 'path';
+import { fileURLToPath } from 'url';
+import { Player } from '../frontend/players.js';
 import { MEJORAS } from './mejoras.shared.js';
+
+const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
 const app = express();
 // Ruta para la raíz, evita error 404 en /
@@ -529,6 +533,7 @@ io.on('connection', (socket) => {
 
 app.use(bodyParser.json());
 app.use(cors());
+app.use(express.static(path.join(__dirname, '../frontend')));
 
 // Inicializar base de datos SQLite
 const db = new sqlite3.Database('./users.db', (err) => {

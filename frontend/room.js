@@ -163,7 +163,11 @@ import { MEJORAS, Proyectil } from './mejoras.shared.js';
 function drawPlayers() {
   if (!canvas) return;
   const localPlayer = players.find(p => p.nick === user.nick);
+  if (localPlayer && localPlayer.speed !== 40) {
+    localPlayer.speed = 40;
+  }
   if (!localPlayer) return;
+    // Debug eliminado
   // Cámara centrada en el jugador local
   let offsetX = localPlayer.x - canvas.width / 2;
   let offsetY = localPlayer.y - canvas.height / 2;
@@ -258,64 +262,10 @@ socket.on('explosion', (data) => {
 let sala = null;
 let availableUpgrades = null; // Mejoras disponibles para elegir en ronda 1
 
-let movement = { w: false, a: false, s: false, d: false };
 let gameLoopId = null;
 
-function updateMovement() {
-  const localPlayer = players.find(p => p.nick === user.nick);
-  if (!localPlayer || localPlayer.defeated) return;
-  let nextX = localPlayer.x;
-  let nextY = localPlayer.y;
-  const speed = localPlayer.speed || 6;
-  let moved = false;
-  // Movimiento por eje, deteniendo el input si hay colisión
-  if (movement.w) {
-    if (puedeMoverJugador(localPlayer.x, localPlayer.y - speed)) {
-      nextY -= speed;
-      moved = true;
-    } else {
-      movement.w = false;
-    }
-  }
-  if (movement.s) {
-    if (puedeMoverJugador(localPlayer.x, localPlayer.y + speed)) {
-      nextY += speed;
-      moved = true;
-    } else {
-      movement.s = false;
-    }
-  }
-  if (movement.a) {
-    if (puedeMoverJugador(localPlayer.x - speed, localPlayer.y)) {
-      nextX -= speed;
-      moved = true;
-    } else {
-      movement.a = false;
-    }
-  }
-  if (movement.d) {
-    if (puedeMoverJugador(localPlayer.x + speed, localPlayer.y)) {
-      nextX += speed;
-      moved = true;
-    } else {
-      movement.d = false;
-    }
-  }
-  if (moved) {
-    localPlayer.x = Math.max(0, Math.min(nextX, MAP_WIDTH));
-    localPlayer.y = Math.max(0, Math.min(nextY, MAP_HEIGHT));
-  }
-}
-
-function gameLoop() {
-  updateMovement();
-  // Aquí puedes agregar otras actualizaciones por frame si es necesario
-  gameLoopId = requestAnimationFrame(gameLoop);
-}
-
 // Iniciar el bucle principal del juego
-if (gameLoopId) cancelAnimationFrame(gameLoopId);
-gameLoop();
+// Game loop is now started in initGame
 
 // --- Disparo de proyectiles y cooldowns ---
 let lastFireTime = 0;
@@ -544,7 +494,7 @@ function mostrarHUDMejoras(soloProyectilQ = false) {
     };
     btns.appendChild(b);
   });
-  hudTimer = 15;
+  
   hudInterval = setInterval(() => {
     hudTimer--;
     hud.querySelector('#hudTimer').textContent = hudTimer;
@@ -602,12 +552,28 @@ function iniciarCombate() {
   enableProjectileShooting();
 }
 
+function gameLoop(timestamp) {
+  const dt = timestamp - lastTime;
+  lastTime = timestamp;
+  // updateMovement eliminado, no hay movimiento local
+  // Actualizar proyectiles
+  for (let p of proyectiles.values()) {
+    p.update(16);
+  }
+  // Actualizar explosiones
+  for (let i = explosions.length - 1; i >= 0; i--) {
+    const exp = explosions[i];
+    if (Date.now() - exp.startTime > exp.duration) {
+      explosions.splice(i, 1);
+    }
+  }
+  drawMap();
+  drawPlayers();
+  gameLoopId = requestAnimationFrame(gameLoop);
+}
+
 function initGame() {
   // Limpiar intervalos anteriores para evitar acumulación
-  if (moveInterval) {
-    clearInterval(moveInterval);
-    moveInterval = null;
-  }
   if (gameLoopId) {
     cancelAnimationFrame(gameLoopId);
     gameLoopId = null;
@@ -645,25 +611,6 @@ function initGame() {
       canvas.style.cursor = 'default';
     }
   });
-  moveInterval = setInterval(updateMovement, 1000 / 60); // Solo movimiento
-  function gameLoop(timestamp) {
-    const dt = timestamp - lastTime;
-    lastTime = timestamp;
-    // Actualizar proyectiles
-    for (let p of proyectiles.values()) {
-      p.update(16);
-    }
-    // Actualizar explosiones
-    for (let i = explosions.length - 1; i >= 0; i--) {
-      const exp = explosions[i];
-      if (Date.now() - exp.startTime > exp.duration) {
-        explosions.splice(i, 1);
-      }
-    }
-    drawMap();
-    drawPlayers();
-    gameLoopId = requestAnimationFrame(gameLoop);
-  }
   gameLoopId = requestAnimationFrame(gameLoop);
   window.addEventListener('resize', () => {
     resizeCanvas();
@@ -1159,9 +1106,6 @@ function drawRock(x, y, r) {
 function handleKeyDown(e) {
     if (hudVisible) return; // No permitir lanzar habilidades si HUD está activo
     const key = e.key.toLowerCase();
-    if (movement.hasOwnProperty(key)) {
-      movement[key] = true;
-    }
     // Habilidad tipo proyectilE: activación según activacionRapida
     if (key === 'e') {
       // Buscar mejora tipo proyectilE que tenga el jugador
@@ -1507,47 +1451,10 @@ function dibujarMurosDePiedra(ctx, offsetX, offsetY) {
 }
 
 function handleKeyUp(e) {
-  const key = e.key.toLowerCase();
-  if (movement.hasOwnProperty(key)) {
-    movement[key] = false;
-  }
+  // Ya no se gestiona movimiento con WASD
 }
 
-function updateMovement() {
-  const player = players.find(p => p.nick === user.nick);
-  if (!player) return;
-  if (player.defeated) return; // No mover si está derrotado
-  if (hudVisible) return; // No mover si HUD está visible
-  let dx = 0, dy = 0;
-  if (movement.w) dy -= 1;
-  if (movement.s) dy += 1;
-  if (movement.a) dx -= 1;
-  if (movement.d) dx += 1;
-  if (dx !== 0 || dy !== 0) {
-    // Normalizar para que la diagonal no sea más rápida
-    if (dx !== 0 && dy !== 0) {
-      dx *= Math.SQRT1_2;
-      dy *= Math.SQRT1_2;
-    }
-    // Colisión con muros (bordes del mundo)
-    const radius = 32;
-    let newX = player.x + dx * player.speed;
-    let newY = player.y + dy * player.speed;
-    const minX = WALL_THICKNESS + radius;
-    const minY = WALL_THICKNESS + radius;
-    const maxX = MAP_WIDTH - WALL_THICKNESS - radius;
-    const maxY = MAP_HEIGHT - WALL_THICKNESS - radius;
-    if (newX < minX) newX = minX;
-    if (newX > maxX) newX = maxX;
-    if (newY < minY) newY = minY;
-    if (newY > maxY) newY = maxY;
-    player.x = newX;
-    player.y = newY;
-    // Enviar nueva posición al servidor
-    socket.emit('movePlayer', { roomId, nick: user.nick, x: player.x, y: player.y });
-  }
-  // Eventos de red y renderSala deben ir fuera de este ciclo si es posible
-}
+// La función updateMovement ha sido eliminada: ya no hay movimiento WASD
 socket.on('gameStarted', (updatedSala) => {
   sala = updatedSala;
   // Ocultar completamente la sala

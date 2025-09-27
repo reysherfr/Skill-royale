@@ -1,10 +1,10 @@
 // players.js
 // Lógica de los jugadores para el juego
 
-export const DEFAULT_SPEED = 3.7;
+
 
 export class Player {
-  constructor({ nick, x = 0, y = 0, color = '#2a5298', isLocal = false, speed = DEFAULT_SPEED, mejoras = [] }) {
+  constructor({ nick, x = 0, y = 0, color = '#2a5298', isLocal = false, speed = 5, mejoras = [] }) {
     this.nick = nick;
     this.x = x;
     this.y = y;
@@ -15,12 +15,8 @@ export class Player {
     this.mejoras = mejoras;
   }
 
-  move(dx, dy, canvas) {
-    // Limitar movimiento dentro del canvas
-    const radius = 32;
-    this.x = Math.max(radius, Math.min(canvas.width - radius, this.x + dx * this.speed));
-    this.y = Math.max(radius, Math.min(canvas.height - radius, this.y + dy * this.speed));
-  }
+  // Método de movimiento eliminado
+  // Método de movimiento eliminado
 }
 
 export function createPlayersFromSala(sala, localNick) {
