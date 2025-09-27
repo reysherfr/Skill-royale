@@ -1,3 +1,7 @@
+// Ruta para la raíz, evita error 404 en /
+app.get('/', (req, res) => {
+  res.send('Backend funcionando');
+});
 import express from 'express';
 import bodyParser from 'body-parser';
 import sqlite3 from 'sqlite3';
