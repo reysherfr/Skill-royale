@@ -535,6 +535,7 @@ function mostrarHUDMejoras(soloProyectilQ = false) {
     };
     btns.appendChild(b);
   });
+  hudTimer = 15;
   hudInterval = setInterval(() => {
     hudTimer--;
     hud.querySelector('#hudTimer').textContent = hudTimer;
@@ -1619,7 +1620,7 @@ function renderSala(sala) {
       const nivel = sala.players[i].nivel || 1;
       playersList.innerHTML += `<div style="margin-bottom:10px; padding:8px; border-radius:8px; background:#f0f4fa; display:flex; align-items:center; gap:10px;">
         <strong>${sala.players[i].nick}</strong>
-        <img src="../ranks/${nivel}.png" alt="Rango ${nivel}" style="width:32px; height:32px; vertical-align:middle;">
+  <img src="ranks/${nivel}.png" alt="Rango ${nivel}" style="width:32px; height:32px; vertical-align:middle;">
       </div>`;
     } else {
       playersList.innerHTML += `<div style="margin-bottom:10px; padding:8px; border-radius:8px; background:#f8f8f8; color:#b0c4de;">Vacante</div>`;
