@@ -291,7 +291,7 @@ function handleMouseDown(e) {
     return;
   }
   if (now - lastFireTime < mejoraSeleccionada.cooldown) {
-    console.log('Cooldown activo', {now, lastFireTime, cooldown: mejoraSeleccionada.cooldown});
+  // console.log('Cooldown activo', {now, lastFireTime, cooldown: mejoraSeleccionada.cooldown});
     return;
   }
   lastFireTime = now;
