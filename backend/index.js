@@ -1,7 +1,4 @@
-// Ruta para la raíz, evita error 404 en /
-app.get('/', (req, res) => {
-  res.send('Backend funcionando');
-});
+
 import express from 'express';
 import bodyParser from 'body-parser';
 import sqlite3 from 'sqlite3';
@@ -12,6 +9,10 @@ import { Player, DEFAULT_SPEED } from '../frontend/players.js';
 import { MEJORAS } from './mejoras.shared.js';
 
 const app = express();
+// Ruta para la raíz, evita error 404 en /
+app.get('/', (req, res) => {
+  res.send('Backend funcionando');
+});
 // const db = new sqlite3.Database('users.db');
 const port = 3000;
 // Contador para IDs de proyectiles
