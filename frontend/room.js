@@ -137,7 +137,7 @@ let lastQFireTime = 0;
 let mouseX = 0, mouseY = 0;
 let currentRound = 1; // Contador de rondas
 let roundHUD = null; // HUD del contador de rondas
-// --- Configuración del mundo ---
+let abilityHUD = null; // HUD de habilidades abajo
 // Verifica si el jugador puede moverse a la posición (x, y) sin colisionar con muros
 function puedeMoverJugador(x, y) {
   if (!window.murosDePiedra) return true;
@@ -288,7 +288,7 @@ function handleMouseDown(e) {
   // Si el jugador está derrotado, no puede disparar
   let lp = players.find(p => p.nick === user.nick);
   if (lp && lp.defeated) return;
-  const now = Date.now();
+  const now = performance.now();
   if (!mejoraSeleccionada || typeof mejoraSeleccionada.cooldown !== 'number' || mejoraSeleccionada.proyectilQ) {
     console.log('No mejoraSeleccionada válida para click izquierdo', mejoraSeleccionada);
     return;
@@ -376,6 +376,172 @@ function ocultarHUDRondas() {
     roundHUD.parentNode.removeChild(roundHUD);
     roundHUD = null;
   }
+}
+
+function crearHUDHabilidades() {
+  // Remover HUD anterior si existe
+  if (abilityHUD && abilityHUD.parentNode) {
+    abilityHUD.parentNode.removeChild(abilityHUD);
+  }
+  
+  // Crear nuevo HUD de habilidades
+  abilityHUD = document.createElement('div');
+  abilityHUD.id = 'abilityHUD';
+  abilityHUD.style.position = 'fixed';
+  abilityHUD.style.bottom = '20px';
+  abilityHUD.style.left = '50%';
+  abilityHUD.style.transform = 'translateX(-50%)';
+  abilityHUD.style.display = 'flex';
+  abilityHUD.style.gap = '20px';
+  abilityHUD.style.zIndex = '1000';
+  
+  // Iconos para las habilidades
+  const abilities = [
+    { key: 'click', icon: 'iconos/click.png', name: 'Click' },
+    { key: 'q', icon: 'iconos/Q.png', name: 'Q' },
+    { key: 'e', icon: 'iconos/E.png', name: 'E' },
+    { key: 'space', icon: 'iconos/espacio.png', name: 'Space' }
+  ];
+  
+  abilities.forEach(ability => {
+    const container = document.createElement('div');
+    container.style.position = 'relative';
+    container.style.width = '60px';
+    container.style.height = '60px';
+    container.style.background = 'rgba(0, 0, 0, 0.8)';
+    container.style.border = '2px solid #fff';
+    container.style.borderRadius = '10px';
+    container.style.display = 'flex';
+    container.style.alignItems = 'center';
+    container.style.justifyContent = 'center';
+    container.style.cursor = 'pointer';
+    container.style.boxShadow = '0 2px 8px rgba(0, 0, 0, 0.5)';
+    container.dataset.ability = ability.key;
+    
+    const img = document.createElement('img');
+    img.src = ability.icon;
+    img.style.width = '40px';
+    img.style.height = '40px';
+    img.style.objectFit = 'contain';
+    
+    // Overlay de cooldown (cortina que baja desde arriba)
+    const cooldownOverlay = document.createElement('div');
+    cooldownOverlay.className = 'cooldown-overlay';
+    cooldownOverlay.style.position = 'absolute';
+    cooldownOverlay.style.top = '0';
+    cooldownOverlay.style.left = '0';
+    cooldownOverlay.style.width = '100%';
+    cooldownOverlay.style.height = '100%';
+    cooldownOverlay.style.background = 'rgba(0, 0, 0, 0.8)';
+    cooldownOverlay.style.clipPath = 'inset(0 0 100% 0)'; // Comienza cubriendo todo desde arriba
+    cooldownOverlay.style.borderRadius = '8px';
+    cooldownOverlay.style.pointerEvents = 'none';
+    cooldownOverlay.style.transition = 'clip-path 0.05s linear'; // Transición más suave y rápida
+    
+    // Texto del cooldown (eliminado, no se usa)
+    // const cooldownText = document.createElement('div');
+    // cooldownText.className = 'cooldown-text';
+    // cooldownText.style.position = 'absolute';
+    // cooldownText.style.top = '50%';
+    // cooldownText.style.left = '50%';
+    // cooldownText.style.transform = 'translate(-50%, -50%)';
+    // cooldownText.style.color = '#fff';
+    // cooldownText.style.fontSize = '12px';
+    // cooldownText.style.fontWeight = 'bold';
+    // cooldownText.style.textShadow = '1px 1px 2px rgba(0,0,0,0.8)';
+    // cooldownText.style.display = 'none';
+    // cooldownText.style.pointerEvents = 'none';
+    
+    container.appendChild(img);
+    container.appendChild(cooldownOverlay);
+    // container.appendChild(cooldownText); // No agregar texto
+    
+    abilityHUD.appendChild(container);
+  });
+  
+  document.body.appendChild(abilityHUD);
+}
+
+function actualizarHUDCooldowns() {
+  if (!abilityHUD) return;
+  
+  const now = performance.now();
+  const containers = abilityHUD.querySelectorAll('[data-ability]');
+  
+  containers.forEach(container => {
+    const ability = container.dataset.ability;
+    const overlay = container.querySelector('.cooldown-overlay');
+    
+    let cooldown = 0;
+    let remaining = 0;
+    let totalCooldown = 0;
+    
+    switch(ability) {
+      case 'click':
+        if (mejoraSeleccionada && mejoraSeleccionada.cooldown) {
+          totalCooldown = mejoraSeleccionada.cooldown;
+          remaining = Math.max(0, totalCooldown - (now - lastFireTime));
+        }
+        break;
+      case 'q':
+        if (mejoraQSeleccionada && mejoraQSeleccionada.cooldown) {
+          totalCooldown = mejoraQSeleccionada.cooldown;
+          remaining = Math.max(0, totalCooldown - (now - lastQFireTime));
+        }
+        break;
+      case 'e':
+        const mejoraE = mejorasJugador.find(m => m.proyectilE);
+        if (mejoraE && mejoraE.cooldown) {
+          totalCooldown = mejoraE.cooldown;
+          // Manejar cooldowns específicos para habilidades E
+          if (mejoraE.id === 'muro_piedra') {
+            // Muro de piedra usa cooldown específico
+            if (window.muroDePiedraCooldown) {
+              remaining = Math.max(0, totalCooldown - (now - window.muroDePiedraCooldown));
+            }
+          } else {
+            // Otras habilidades E usan cooldown genérico
+            const cooldownVar = window[mejoraE.id + 'Cooldown'];
+            if (cooldownVar) {
+              remaining = Math.max(0, totalCooldown - (now - cooldownVar));
+            }
+          }
+        }
+        break;
+      case 'space':
+        const mejoraEspacio = mejorasJugador.find(m => m.proyectilEspacio);
+        if (mejoraEspacio && mejoraEspacio.cooldown) {
+          totalCooldown = mejoraEspacio.cooldown;
+          // Manejar cooldowns específicos para habilidades Space
+          if (mejoraEspacio.id === 'embestida') {
+            // Embestida usa teleportCooldown
+            if (window.teleportCooldown) {
+              remaining = Math.max(0, totalCooldown - (now - window.teleportCooldown));
+            }
+          } else {
+            // Otras habilidades Space usan cooldown genérico
+            const cooldownVar = window[mejoraEspacio.id + 'Cooldown'];
+            if (cooldownVar) {
+              remaining = Math.max(0, totalCooldown - (now - cooldownVar));
+            }
+          }
+        }
+        break;
+    }
+    
+    if (remaining > 0 && totalCooldown > 0) {
+      // Calcular el porcentaje de cooldown restante con mayor precisión
+      const percent = Math.max(0, Math.min(100, (remaining / totalCooldown) * 100));
+      // Cortina que baja desde arriba: cuando percent=100%, inset(0 0 0 0) cubre todo
+      // cuando percent=0%, inset(100% 0 0 0) no cubre nada
+      overlay.style.clipPath = `inset(${100 - percent}% 0 0 0)`;
+      overlay.style.display = 'block';
+    } else {
+      // Sin cooldown - cortina completamente bajada
+      overlay.style.clipPath = 'inset(100% 0 0 0)';
+      overlay.style.display = 'none';
+    }
+  });
 }
 
 // ...existing code...
@@ -591,15 +757,18 @@ function gameLoop() {
       explosions.splice(i, 1);
     }
   }
+  // Actualizar HUD de cooldowns
+  actualizarHUDCooldowns();
   drawMap();
   drawPlayers();
-   gameLoopId = setTimeout(gameLoop, 0);
+  // Usar requestAnimationFrame para actualizaciones más suaves
+  gameLoopId = requestAnimationFrame(gameLoop);
 }
 
 function initGame() {
   // Limpiar intervalos anteriores para evitar acumulación
   if (gameLoopId) {
-    clearTimeout(gameLoopId);
+    cancelAnimationFrame(gameLoopId);
     gameLoopId = null;
   }
   // Mostrar HUD de selección de mejora solo si NO es reinicio de ronda
@@ -623,6 +792,7 @@ function initGame() {
   document.body.appendChild(fpsDiv);
   resizeCanvas();
   mostrarHUDRondas();
+  crearHUDHabilidades();
   // Crear jugadores usando la clase Player
   players = createPlayersFromSala(sala, user.nick);
   // Centrar a los dos primeros jugadores en el centro del mapa, uno a la izquierda y otro a la derecha
@@ -1175,7 +1345,7 @@ function handleKeyDown(e) {
       offsetY = Math.max(0, Math.min(offsetY, MAP_HEIGHT - canvas.height));
       if (mejoraE.activacionRapida) {
         // Fastcast: activar directamente debajo del jugador
-        const now = Date.now();
+        const now = performance.now();
         if (window[mejoraE.id + 'Cooldown'] && now - window[mejoraE.id + 'Cooldown'] < mejoraE.cooldown) return;
         window[mejoraE.id + 'Cooldown'] = now;
         socket.emit('shootProjectile', {
@@ -1197,7 +1367,7 @@ function handleKeyDown(e) {
             muroPiedraAiming = true;
             canvas.style.cursor = 'none';
           } else {
-            const now = Date.now();
+            const now = performance.now();
             if (window.muroDePiedraCooldown && now - window.muroDePiedraCooldown < mejoraE.cooldown) return;
             window.muroDePiedraCooldown = now;
             const targetX = mouseX + offsetX;
@@ -1234,7 +1404,7 @@ function handleKeyDown(e) {
       if (!localPlayer) return;
       if (mejoraEspacio.activacionRapida) {
         // Fastcast: activar directamente
-        const now = Date.now();
+        const now = performance.now();
         if (window[mejoraEspacio.id + 'Cooldown'] && now - window[mejoraEspacio.id + 'Cooldown'] < mejoraEspacio.cooldown) return;
         window[mejoraEspacio.id + 'Cooldown'] = now;
         socket.emit('activateAbility', {
@@ -1248,7 +1418,7 @@ function handleKeyDown(e) {
           spaceAiming = true;
           canvas.style.cursor = 'none';
         } else {
-          const now = Date.now();
+          const now = performance.now();
           if (window.teleportCooldown && now - window.teleportCooldown < mejoraEspacio.cooldown) return;
           window.teleportCooldown = now;
           let offsetX = localPlayer.x - canvas.width / 2;
@@ -1357,7 +1527,7 @@ function handleKeyDown(e) {
           meteoroAiming = true;
         } else {
           meteoroAiming = false;
-          const now = Date.now();
+          const now = performance.now();
           if (now - lastQFireTime < mejoraQSeleccionada.cooldown) return;
           lastQFireTime = now;
           const localPlayer = players.find(p => p.nick === user.nick);
@@ -1387,7 +1557,7 @@ function handleKeyDown(e) {
           cuchillaAiming = true;
         } else {
           cuchillaAiming = false;
-          const now = Date.now();
+          const now = performance.now();
           if (now - lastQFireTime < mejoraQSeleccionada.cooldown) return;
           lastQFireTime = now;
           const localPlayer = players.find(p => p.nick === user.nick);
@@ -1417,7 +1587,7 @@ function handleKeyDown(e) {
         } else {
           // Empezar cast
           rocaFangosaAiming = false;
-          const now = Date.now();
+          const now = performance.now();
           if (now - lastQFireTime < mejoraQSeleccionada.cooldown) return;
           const localPlayer = players.find(p => p.nick === user.nick);
           if (!localPlayer) return;
