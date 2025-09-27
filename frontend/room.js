@@ -157,7 +157,7 @@ const MAP_WIDTH = 2000;
 const MAP_HEIGHT = 1200;
 const WALL_THICKNESS = 24;
 // ...existing code...
-import { MEJORAS, Proyectil } from '../backend/mejoras.shared.js';
+import { MEJORAS, Proyectil } from './mejoras.shared.js';
 
 // Dibuja todos los jugadores en el canvas, con cámara centrada en el jugador local y mundo fijo
 function drawPlayers() {
