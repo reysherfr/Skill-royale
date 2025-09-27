@@ -123,6 +123,8 @@ let spaceAiming = false; // Si está en modo preview de habilidad espacio
 let activeCasts = []; // Array de casts activos: [{ position: {x, y}, startTime, player, mejora }]
 let activeMuddyGrounds = []; // Array de suelos fangosos: [{ x, y, radius, duration, createdAt }]
 let activeSacredGrounds = []; // Array de suelos sagrados: [{ x, y, radius, duration, createdAt, owner }]
+let lastMovementSend = 0; // Timestamp of last movement sent to server
+let movementSendInterval = 50; // Send movement every 50ms (20 FPS) instead of every frame
 let mostrarSoloProyectilQ = false;
 let hudTimer = 15;
 let hudInterval = null;
@@ -593,13 +595,17 @@ function updateMovement(dt) {
     localPlayer.x = clampedX;
     localPlayer.y = clampedY;
     
-    // Send movement to server for validation and sync
-    socket.emit('movePlayer', {
-      roomId: roomId,
-      nick: user.nick,
-      x: clampedX,
-      y: clampedY
-    });
+    // Send movement to server less frequently to reduce network traffic
+    const now = Date.now();
+    if (now - lastMovementSend >= movementSendInterval) {
+      socket.emit('movePlayer', {
+        roomId: roomId,
+        nick: user.nick,
+        x: clampedX,
+        y: clampedY
+      });
+      lastMovementSend = now;
+    }
   }
 }
 
@@ -1539,13 +1545,18 @@ socket.on('playerMoved', (data) => {
       drawMap();
       drawPlayers();
     } else {
-      // For local player, only correct if there's a significant discrepancy
-      // This prevents jittering from minor server corrections
-      const dx = Math.abs(player.x - x);
-      const dy = Math.abs(player.y - y);
-      if (dx > 5 || dy > 5) { // Only correct if difference is significant
-        player.x = x;
-        player.y = y;
+      // For local player, smooth reconciliation
+      const dx = x - player.x;
+      const dy = y - player.y;
+      const distance = Math.sqrt(dx * dx + dy * dy);
+      
+      // Only reconcile if the server correction is significant (> 10 pixels)
+      // This prevents jittering from small network variations
+      if (distance > 10) {
+        // Smooth interpolation towards server position
+        const lerpFactor = 0.3; // Adjust this value (0.1 = slow, 0.9 = fast correction)
+        player.x += dx * lerpFactor;
+        player.y += dy * lerpFactor;
       }
       // Always redraw for local player movement
       drawMap();
