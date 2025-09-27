@@ -18,6 +18,7 @@ app.get('/', (req, res) => {
 });
 // const db = new sqlite3.Database('users.db');
 const port = 3000;
+const DEFAULT_SPEED = 5;
 // Contador para IDs de proyectiles
 let projectileIdCounter = 0;
 

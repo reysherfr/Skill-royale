@@ -1,4 +1,4 @@
-const socket = io('https://skill-royale.onrender.com');
+const socket = io('http://localhost:3000');
 
 const user = JSON.parse(localStorage.getItem('batlesd_user'));
 const roomId = localStorage.getItem('batlesd_room_id');
@@ -47,8 +47,11 @@ socket.on('playersUpdate', (serverPlayers) => {
       changed = true;
     }
     local.health = sp.health;
-    local.x = sp.x;
-    local.y = sp.y;
+    // Don't update position for local player during movement to avoid prediction conflicts
+    if (sp.nick !== user.nick) {
+      local.x = sp.x;
+      local.y = sp.y;
+    }
     local.speed = sp.speed;
     local.speedBoostUntil = sp.speedBoostUntil || 0;
     local.defeated = sp.defeated;
@@ -123,6 +126,7 @@ let hudInterval = null;
 let hudVisible = false;
 let hud = null;
 let lastTime = 0;
+let keys = { w: false, a: false, s: false, d: false };
 let lastQFireTime = 0;
 let mouseX = 0, mouseY = 0;
 let currentRound = 1; // Contador de rondas
@@ -163,9 +167,10 @@ import { MEJORAS, Proyectil } from './mejoras.shared.js';
 function drawPlayers() {
   if (!canvas) return;
   const localPlayer = players.find(p => p.nick === user.nick);
-  if (localPlayer && localPlayer.speed !== 40) {
-    localPlayer.speed = 40;
-  }
+  // REMOVED: Forcing speed to 40 - now using configurable speed
+  // if (localPlayer && localPlayer.speed !== 40) {
+  //   localPlayer.speed = 40;
+  // }
   if (!localPlayer) return;
     // Debug eliminado
   // Cámara centrada en el jugador local
@@ -552,10 +557,53 @@ function iniciarCombate() {
   enableProjectileShooting();
 }
 
+function updateMovement(dt) {
+  if (dt === 0 || dt > 100) return; // Skip invalid dt values
+  
+  const localPlayer = players.find(p => p.nick === user.nick);
+  if (!localPlayer) return;
+  
+  let dx = 0;
+  let dy = 0;
+  
+  if (keys.w) dy -= 1;
+  if (keys.s) dy += 1;
+  if (keys.a) dx -= 1;
+  if (keys.d) dx += 1;
+  
+  if (dx !== 0 || dy !== 0) {
+    // Normalize diagonal movement
+    const length = Math.sqrt(dx * dx + dy * dy);
+    dx /= length;
+    dy /= length;
+    
+    // Move based on speed and time
+    const moveDistance = localPlayer.speed * (dt / 16); // Assuming 60 FPS baseline
+    const newX = localPlayer.x + dx * moveDistance;
+    const newY = localPlayer.y + dy * moveDistance;
+    
+    // Check bounds locally first
+    const clampedX = Math.max(0, Math.min(MAP_WIDTH, newX));
+    const clampedY = Math.max(0, Math.min(MAP_HEIGHT, newY));
+    
+    // Update local position immediately for smooth movement (client-side prediction)
+    localPlayer.x = clampedX;
+    localPlayer.y = clampedY;
+    
+    // Send movement to server for validation and sync
+    socket.emit('movePlayer', {
+      roomId: roomId,
+      nick: user.nick,
+      x: clampedX,
+      y: clampedY
+    });
+  }
+}
+
 function gameLoop(timestamp) {
   const dt = timestamp - lastTime;
   lastTime = timestamp;
-  // updateMovement eliminado, no hay movimiento local
+  updateMovement(dt);
   // Actualizar proyectiles
   for (let p of proyectiles.values()) {
     p.update(16);
@@ -1106,6 +1154,14 @@ function drawRock(x, y, r) {
 function handleKeyDown(e) {
     if (hudVisible) return; // No permitir lanzar habilidades si HUD está activo
     const key = e.key.toLowerCase();
+    
+    // Movement keys
+    if (key === 'w' || key === 'a' || key === 's' || key === 'd') {
+        keys[key] = true;
+        e.preventDefault(); // Prevent default browser behavior
+        return;
+    }
+    
     // Habilidad tipo proyectilE: activación según activacionRapida
     if (key === 'e') {
       // Buscar mejora tipo proyectilE que tenga el jugador
@@ -1451,7 +1507,11 @@ function dibujarMurosDePiedra(ctx, offsetX, offsetY) {
 }
 
 function handleKeyUp(e) {
-  // Ya no se gestiona movimiento con WASD
+  const key = e.key.toLowerCase();
+  // Movement keys
+  if (key === 'w' || key === 'a' || key === 's' || key === 'd') {
+    keys[key] = false;
+  }
 }
 
 // La función updateMovement ha sido eliminada: ya no hay movimiento WASD
@@ -1469,10 +1529,25 @@ socket.on('playerMoved', (data) => {
   const { nick, x, y } = data;
   const player = players.find(p => p.nick === nick);
   if (player) {
-    player.x = x;
-    player.y = y;
-    drawMap();
-    drawPlayers();
+    // For other players, update position directly
+    if (nick !== user.nick) {
+      player.x = x;
+      player.y = y;
+      drawMap();
+      drawPlayers();
+    } else {
+      // For local player, only correct if there's a significant discrepancy
+      // This prevents jittering from minor server corrections
+      const dx = Math.abs(player.x - x);
+      const dy = Math.abs(player.y - y);
+      if (dx > 5 || dy > 5) { // Only correct if difference is significant
+        player.x = x;
+        player.y = y;
+      }
+      // Always redraw for local player movement
+      drawMap();
+      drawPlayers();
+    }
   }
 });
 
@@ -1555,7 +1630,7 @@ async function cargarSala() {
   currentRound = 1;
   // No mostrar HUD de rondas aquí, solo cuando se inicie la partida
   try {
-  const res = await fetch('https://skill-royale.onrender.com/rooms');
+  const res = await fetch('http://localhost:3000/rooms');
     const data = await res.json();
     if (data.success) {
       sala = data.salas.find(s => s.id === roomId);
@@ -1582,7 +1657,7 @@ startBtn.addEventListener('click', () => {
 document.getElementById('exitBtn').addEventListener('click', () => {
   if (sala && user.nick === sala.host.nick) {
     // Eliminar la sala en el backend
-  fetch('https://skill-royale.onrender.com/delete-room', {
+  fetch('http://localhost:3000/delete-room', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ id: roomId })
@@ -1592,7 +1667,7 @@ document.getElementById('exitBtn').addEventListener('click', () => {
     });
   } else {
     // Eliminar jugador de la sala en el backend
-  fetch('https://skill-royale.onrender.com/leave-room', {
+  fetch('http://localhost:3000/leave-room', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ id: roomId, nick: user.nick })

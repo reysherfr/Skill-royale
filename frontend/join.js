@@ -9,7 +9,7 @@ if (!user) {
 const roomsList = document.getElementById('roomsList');
 
 // Conectar Socket.IO
-const socket = io('https://skill-royale.onrender.com');
+const socket = io('http://localhost:3000');
 
 socket.on('roomsUpdated', () => {
   cargarSalas();
@@ -17,7 +17,7 @@ socket.on('roomsUpdated', () => {
 
 async function cargarSalas() {
   try {
-  const res = await fetch('https://skill-royale.onrender.com/rooms');
+  const res = await fetch('http://localhost:3000/rooms');
     const data = await res.json();
     if (data.success && data.salas.length > 0) {
       roomsList.innerHTML = '';
@@ -35,7 +35,7 @@ async function cargarSalas() {
         btn.addEventListener('click', async function() {
           const roomId = this.dataset.roomid;
           try {
-            const res = await fetch('https://skill-royale.onrender.com/join-room', {
+            const res = await fetch('http://localhost:3000/join-room', {
               method: 'POST',
               headers: { 'Content-Type': 'application/json' },
               body: JSON.stringify({ id: roomId, nick: user.nick, nivel: user.nivel })
