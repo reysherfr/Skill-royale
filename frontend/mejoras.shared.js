@@ -105,33 +105,33 @@ const MEJORAS = [
     danio: 20,
     cooldown: 1400, // ms
     effect: { type: 'dot', damage: 2, duration: 3000 },
-    maxRange: 720,
+    maxRange: 820,
     proyectil: true,
     radius: 16,
     activacionRapida: false, // Requiere apuntar
     elemento: 'fuego',
-    descripcion: 'Daño: 20, Velocidad: 10, Bola de Fuego (radio 16) Rango: 720. +2 de daño por segundo durante 2 segundos.'
+    descripcion: 'Daño: 20, Velocidad: 10, Bola de Fuego (radio 16) Rango: 820. +2 de daño por segundo durante 2 segundos.'
   },
   {
     id: 'hielo',
     nombre: 'Bola de Hielo',
     color: 'deepskyblue',
-    velocidad: 8.5,
+    velocidad: 9.5,
     danio: 15,
     cooldown: 1250, // ms
     effect: { type: 'slow', amount: 0.2, duration: 1000 },
-    maxRange: 765,
+    maxRange: 865,
     proyectil: true,
     radius: 14,
     activacionRapida: false, // Requiere apuntar
     elemento: 'hielo',
-    descripcion: 'Daño: 15, Velocidad: 8.5, (radio 14) Rango: 765. Proyectil que relentiza al enemigo un 20% por 1 segundo al impactar.'
+    descripcion: 'Daño: 15, Velocidad: 9.5, (radio 14) Rango: 865. Proyectil que relentiza al enemigo un 20% por 1 segundo al impactar.'
   },
   {
     id: 'electrico',
     nombre: 'Disparo Eléctrico',
     color: '#c2bf01ff', // verde claro
-    velocidad: 16,
+    velocidad: 14.5,
     danio: 9,
     cooldown: 1100, // ms
     effect: null,
@@ -140,7 +140,7 @@ const MEJORAS = [
     radius: 9,
     activacionRapida: false, // Requiere apuntar
     elemento: 'electrico',
-    descripcion: 'Daño inicial: 9, Velocidad: 16, (radio 9) Rango: 1000. Pasiva: cada vez que aciertas a un enemigo, el daño aumenta en 2. Al ganar o perder la ronda, el daño vuelve a 9.',
+    descripcion: 'Daño inicial: 9, Velocidad: 14.5, (radio 9) Rango: 1000. Pasiva: cada vez que aciertas a un enemigo, el daño aumenta en 2. Al ganar o perder la ronda, el daño vuelve a 9.',
     onHit: {
       type: 'damageStack',
       amount: 2
