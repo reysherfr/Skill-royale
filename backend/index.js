@@ -12,6 +12,8 @@ import { MEJORAS } from './mejoras.shared.js';
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
 const app = express();
+// Servir archivos estáticos del frontend
+app.use(express.static(path.join(__dirname, '../frontend')));
 // Ruta para la raíz, evita error 404 en /
 app.get('/', (req, res) => {
   res.send('Backend funcionando');
