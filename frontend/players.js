@@ -8,8 +8,6 @@ export class Player {
     this.nick = nick;
     this.x = x;
     this.y = y;
-    this.targetX = x;
-    this.targetY = y;
     this.color = color;
     this.isLocal = isLocal;
     this.health = 100;
@@ -17,13 +15,8 @@ export class Player {
     this.mejoras = mejoras;
   }
 
-  // Interpolación suave para jugadores remotos
-  interpolatePosition(alpha = 0.2) {
-    if (!this.isLocal) {
-      this.x += (this.targetX - this.x) * alpha;
-      this.y += (this.targetY - this.y) * alpha;
-    }
-  }
+  // Método de movimiento eliminado
+  // Método de movimiento eliminado
 }
 
 export function createPlayersFromSala(sala, localNick) {

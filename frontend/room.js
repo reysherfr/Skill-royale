@@ -50,10 +50,10 @@ socket.on('playersUpdate', (serverPlayers) => {
       changed = true;
     }
     local.health = sp.health;
-    // Para jugadores remotos, actualizar solo la posición objetivo
+    // Don't update position for local player during movement to avoid prediction conflicts
     if (sp.nick !== user.nick) {
-      local.targetX = sp.x;
-      local.targetY = sp.y;
+      local.x = sp.x;
+      local.y = sp.y;
     }
     local.speed = sp.speed;
     local.speedBoostUntil = sp.speedBoostUntil || 0;
@@ -123,9 +123,6 @@ let spaceAiming = false; // Si está en modo preview de habilidad espacio
 let activeCasts = []; // Array de casts activos: [{ position: {x, y}, startTime, player, mejora }]
 let activeMuddyGrounds = []; // Array de suelos fangosos: [{ x, y, radius, duration, createdAt }]
 let activeSacredGrounds = []; // Array de suelos sagrados: [{ x, y, radius, duration, createdAt, owner }]
-let lastMovementSend = 0; // Timestamp of last movement sent to server
-let movementSendInterval = 25; // Send movement every 25ms (40 FPS) instead of every frame
-let pendingMovement = null; // Store the latest movement to send
 let mostrarSoloProyectilQ = false;
 let hudTimer = 15;
 let hudInterval = null;
@@ -596,23 +593,13 @@ function updateMovement(dt) {
     localPlayer.x = clampedX;
     localPlayer.y = clampedY;
     
-    // Store the latest movement to send
-    pendingMovement = { x: clampedX, y: clampedY };
-    
-    // Send movement to server less frequently to reduce network traffic
-    const now = Date.now();
-    if (now - lastMovementSend >= movementSendInterval) {
-      if (pendingMovement) {
-        socket.emit('movePlayer', {
-          roomId: roomId,
-          nick: user.nick,
-          x: pendingMovement.x,
-          y: pendingMovement.y
-        });
-        lastMovementSend = now;
-        pendingMovement = null;
-      }
-    }
+    // Send movement every frame for smooth movement
+    socket.emit('movePlayer', {
+      roomId: roomId,
+      nick: user.nick,
+      x: clampedX,
+      y: clampedY
+    });
   }
 }
 
@@ -620,12 +607,6 @@ function gameLoop(timestamp) {
   const dt = timestamp - lastTime;
   lastTime = timestamp;
   updateMovement(dt);
-  // Interpolar posición de jugadores remotos para suavizar movimiento
-  for (let player of players) {
-    if (!player.isLocal) {
-      player.interpolatePosition(0.2); // Puedes ajustar el alpha para más/menos suavidad
-    }
-  }
   // Actualizar proyectiles
   for (let p of proyectiles.values()) {
     p.update(16);
@@ -1536,7 +1517,7 @@ function handleKeyUp(e) {
   }
 }
 
-// La función updateMovement ha sido eliminada: ya no hay movimiento WASD
+// Movimiento WASD con envío suave cada frame
 socket.on('gameStarted', (updatedSala) => {
   sala = updatedSala;
   // Ocultar completamente la sala
