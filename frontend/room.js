@@ -109,6 +109,10 @@ socket.on('gameStarted', (updatedSala) => {
   canvas.style.display = 'block';
   // Inicializar juego
   initGame();
+  // Mostrar HUD de selección de mejoras en ronda 1
+  if (sala.round === 1) {
+    mostrarHUDSeleccionHabilidades();
+  }
 });
 let proyectiles = new Map();
 let mejoraSeleccionada = null;
@@ -167,7 +171,6 @@ function colisionJugadorMuro(playerX, playerY, muro) {
 const MAP_WIDTH = 2500;
 const MAP_HEIGHT = 1500;
 const WALL_THICKNESS = 24;
-// ...existing code...
 import { MEJORAS, Proyectil } from './mejoras.shared.js';
 
 // Dibuja todos los jugadores en el canvas, con cámara centrada en el jugador local y mundo fijo
@@ -284,7 +287,7 @@ let lastFireTime = 0;
 
 
 function handleMouseDown(e) {
-  if (hudVisible) return; // No disparar si HUD está visible
+  if (hudVisible) return; // No disparar si HUD está visible, igual que otras habilidades
   if (e.button !== 0) return; // Solo click izquierdo
   // Si el jugador está derrotado, no puede disparar
   let lp = players.find(p => p.nick === user.nick);
@@ -513,19 +516,7 @@ function actualizarHUDCooldowns() {
         const mejoraEspacio = mejorasJugador.find(m => m.proyectilEspacio);
         if (mejoraEspacio && mejoraEspacio.cooldown) {
           totalCooldown = mejoraEspacio.cooldown;
-          // Manejar cooldowns específicos para habilidades Space
-          if (mejoraEspacio.id === 'embestida') {
-            // Embestida usa teleportCooldown
-            if (window.teleportCooldown) {
-              remaining = Math.max(0, totalCooldown - (now - window.teleportCooldown));
-            }
-          } else {
-            // Otras habilidades Space usan cooldown genérico
-            const cooldownVar = window[mejoraEspacio.id + 'Cooldown'];
-            if (cooldownVar) {
-              remaining = Math.max(0, totalCooldown - (now - cooldownVar));
-            }
-          }
+          remaining = Math.max(0, totalCooldown - (now - window.teleportCooldown));
         }
         break;
     }
@@ -545,183 +536,7 @@ function actualizarHUDCooldowns() {
   });
 }
 
-// ...existing code...
-
-function mostrarHUDMejoras(soloProyectilQ = false) {
-  // Sincronizar mejorasJugador antes de mostrar HUD en ronda 2
-  if (soloProyectilQ) {
-    const localPlayer = players.find(p => p.nick === user.nick);
-    if (localPlayer && localPlayer.mejoras) {
-      mejorasJugador = localPlayer.mejoras;
-    }
-    mejoraQSeleccionada = null;
-  }
-  hudVisible = true;
-  mejoraSeleccionada = null;
-  hudTimer = 15;
-  let selectedButton = null; // Para resaltar el botón seleccionado
-  // Si ya existe un HUD, elimínalo completamente y limpia el intervalo anterior
-  if (hudInterval) {
-    clearInterval(hudInterval);
-    hudInterval = null;
-  }
-  if (hud && hud.parentNode) {
-    hud.parentNode.removeChild(hud);
-    hud = null;
-  }
-  // Crear nuevo HUD
-  hud = document.createElement('div');
-  hud.id = 'hudMejoras';
-  hud.style.position = 'fixed';
-  hud.style.top = '0';
-  hud.style.left = '0';
-  hud.style.width = '100vw';
-  hud.style.height = '100vh';
-  hud.style.background = 'rgba(30,30,30,0.85)';
-  hud.style.display = 'flex';
-  hud.style.flexDirection = 'column';
-  hud.style.alignItems = 'center';
-  hud.style.justifyContent = 'center';
-  hud.style.zIndex = '1000';
-  document.body.appendChild(hud);
-  hud.innerHTML = `<div style="color:white;font-size:2rem;margin-bottom:24px;">Selecciona tu mejora inicial</div>
-    <div id='mejorasBtns' style="display:flex;gap:40px;margin-bottom:32px;"></div>
-    <div id='tooltip' style="position:absolute;background:#222;color:#fff;padding:12px;border-radius:8px;border:1px solid #555;font-size:14px;max-width:250px;word-wrap:break-word;display:none;z-index:1001;box-shadow:0 4px 12px rgba(0,0,0,0.5);"></div>
-    <div style='color:#fff;font-size:1.5rem;'>Comienza en <span id='hudTimer'>15</span> segundos...</div>`;
-  const btns = hud.querySelector('#mejorasBtns');
-  const tooltip = hud.querySelector('#tooltip');
-  let mejorasToShow;
-  if (currentRound === 3) {
-    // En ronda 3, mostrar solo habilidades tipo proyectilE que el jugador no tenga
-    mejorasToShow = MEJORAS.filter(m => m.proyectilE && !mejorasJugador.find(mj => mj.id === m.id));
-  } else if (currentRound === 4) {
-    // En ronda 4, mostrar solo habilidades tipo proyectilEspacio que el jugador no tenga
-    mejorasToShow = MEJORAS.filter(m => m.proyectilEspacio && !mejorasJugador.find(mj => mj.id === m.id));
-  } else {
-    mejorasToShow = availableUpgrades ?
-      availableUpgrades.filter(m => !mejorasJugador.find(mj => mj.id === m.id)) :
-      (soloProyectilQ
-        ? MEJORAS.filter(m => m.proyectilQ && !mejorasJugador.find(mj => mj.id === m.id))
-        : MEJORAS.filter(m => !m.proyectilQ && !m.proyectilEspacio && m.id !== 'cuchilla_fria_menor' && !mejorasJugador.find(mj => mj.id === m.id))
-      );
-  }
-  console.log('Mejoras to show:', mejorasToShow.length, mejorasToShow.map(m => m.nombre));
-  mejorasToShow.forEach(m => {
-    const b = document.createElement('button');
-    b.textContent = m.nombre;
-    b.style.background = m.color;
-    b.style.color = '#fff';
-    b.style.fontSize = '1.2rem';
-    b.style.padding = '18px 32px';
-    b.style.border = 'none';
-    b.style.borderRadius = '12px';
-    b.style.cursor = 'pointer';
-    b.style.boxShadow = '0 2px 12px #0008';
-    // Usar la descripción de la mejora si existe, si no, mostrar la info básica
-    const desc = m.descripcion
-      ? m.descripcion
-      : `Daño: ${m.danio}<br>Velocidad: ${m.velocidad}`;
-    b.onmouseover = (e) => {
-      tooltip.innerHTML = desc;
-      tooltip.style.display = 'block';
-      tooltip.style.left = `${e.pageX + 15}px`;
-      tooltip.style.top = `${e.pageY + 15}px`;
-    };
-    b.onmousemove = (e) => {
-      tooltip.style.left = `${e.pageX + 15}px`;
-      tooltip.style.top = `${e.pageY + 15}px`;
-    };
-    b.onmouseout = () => {
-      tooltip.style.display = 'none';
-    };
-    b.onclick = () => {
-      // Quitar resaltado del botón anterior si existe
-      if (selectedButton) {
-        selectedButton.style.border = 'none';
-      }
-      // Seleccionar nueva mejora y resaltar botón
-      if (soloProyectilQ) {
-        mejoraQSeleccionada = m;
-      } else if (!m.proyectilEspacio) {
-        mejoraSeleccionada = m;
-      }
-      selectedButton = b;
-      b.style.border = '3px solid #ffd700'; // Borde dorado para resaltar
-      // Eliminar todos los botones excepto el seleccionado
-      Array.from(btns.children).forEach(btn => {
-        if (btn !== b) btn.remove();
-      });
-      // Deshabilitar el botón seleccionado
-      b.disabled = true;
-      b.style.opacity = '1';
-      b.style.cursor = 'not-allowed';
-      // Enviar la mejora seleccionada al backend inmediatamente
-      if (soloProyectilQ) {
-        socket.emit('selectUpgrade', {
-          roomId,
-          mejoraId: m.id,
-          proyectilQ: true
-        });
-      } else {
-        socket.emit('selectUpgrade', {
-          roomId,
-          mejoraId: m.id
-        });
-      }
-      // El HUD permanece visible hasta que termine el timer
-    };
-    btns.appendChild(b);
-  });
-  
-  hudInterval = setInterval(() => {
-    hudTimer--;
-    hud.querySelector('#hudTimer').textContent = hudTimer;
-    if (hudTimer <= 0) {
-      clearInterval(hudInterval);
-      if (hud && hud.parentNode) {
-        hud.parentNode.removeChild(hud);
-      }
-      hudVisible = false;
-      // Si no se seleccionó nada, elegir una mejora al azar
-      let mejoraFinal;
-      const mejorasDisponibles = soloProyectilQ ?
-        MEJORAS.filter(m => m.proyectilQ && !mejorasJugador.find(mj => mj.id === m.id)) :
-        MEJORAS.filter(m => !m.proyectilQ && m.id !== 'cuchilla_fria_menor' && !mejorasJugador.find(mj => mj.id === m.id));
-      if (soloProyectilQ) {
-        mejoraFinal = mejoraQSeleccionada;
-        if (!mejoraFinal && mejorasDisponibles.length > 0) {
-          // Elegir una mejora Q al azar
-          const idx = Math.floor(Math.random() * mejorasDisponibles.length);
-          mejoraFinal = mejorasDisponibles[idx];
-        }
-        if (mejoraFinal) {
-          socket.emit('selectUpgrade', {
-            roomId,
-            mejoraId: mejoraFinal.id,
-            proyectilQ: true
-          });
-        }
-      } else {
-        mejoraFinal = mejoraSeleccionada;
-        if (!mejoraFinal && mejorasDisponibles.length > 0) {
-          // Elegir una mejora normal al azar
-          const idx = Math.floor(Math.random() * mejorasDisponibles.length);
-          mejoraFinal = mejorasDisponibles[idx];
-        }
-        if (mejoraFinal) {
-          socket.emit('selectUpgrade', {
-            roomId,
-            mejoraId: mejoraFinal.id
-          });
-        }
-      }
-      // Resetear para la siguiente ronda (siempre Round 1 con mejoras normales)
-      mostrarSoloProyectilQ = false;
-      // Iniciar combate
-      iniciarCombate();
-    }
-  }, 1000);
-}
+// Old HUD function removed - replaced with new implementation
 
 function iniciarCombate() {
   // Aquí puedes activar controles, proyectiles, etc.
@@ -773,9 +588,9 @@ function initGame() {
     gameLoopId = null;
   }
   // Mostrar HUD de selección de mejora solo si NO es reinicio de ronda
-  if (!mostrarSoloProyectilQ) {
-    mostrarHUDMejoras(false);
-  }
+  // if (!mostrarSoloProyectilQ) {
+  //   mostrarHUDMejoras(false);
+  // }
   // No resetear mostrarSoloProyectilQ aquí, mantener el estado de la ronda
   canvas = document.getElementById('gameCanvas');
   ctx = canvas.getContext('2d');
@@ -822,6 +637,7 @@ function initGame() {
   frameCount = 0;
   fps = 0;
   lastFpsUpdate = performance.now();
+  enableProjectileShooting(); // Habilitar disparos desde el inicio
   gameLoop();
   window.addEventListener('resize', () => {
     resizeCanvas();
@@ -886,12 +702,8 @@ function drawMap() {
   // Calcular ángulo real entre jugador y mouse
   const dx = offsetMouseX - centerX;
   const dy = offsetMouseY - centerY;
-  const angle = Math.atan2(dy, dx) + Math.PI / 2;
-  // Guardar el ángulo y posiciones en la mejora para el cast
-  muroMejora.lastCastAngle = angle;
-  muroMejora.lastCastCenter = { x: centerX, y: centerY };
-  muroMejora.lastCastTarget = { x: offsetMouseX, y: offsetMouseY };
   // El muro debe estar perpendicular a la dirección apuntada
+  const angle = Math.atan2(dy, dx) + Math.PI / 2;
   ctx.translate(offsetMouseX, offsetMouseY);
   ctx.rotate(angle);
         ctx.beginPath();
@@ -1428,14 +1240,24 @@ function handleKeyDown(e) {
           offsetY = Math.max(0, Math.min(offsetY, MAP_HEIGHT - canvas.height));
           let targetX = mouseX + offsetX;
           let targetY = mouseY + offsetY;
-          const dx = targetX - localPlayer.x;
-          const dy = targetY - localPlayer.y;
-          const dist = Math.sqrt(dx * dx + dy * dy);
-          if (dist > mejoraEspacio.maxRange) {
-            const angulo = Math.atan2(dy, dx);
-            targetX = localPlayer.x + Math.cos(angulo) * mejoraEspacio.maxRange;
-            targetY = localPlayer.y + Math.sin(angulo) * mejoraEspacio.maxRange;
-          }
+          // Ajuste: Embestida y Teleport se lanzan al máximo rango si el jugador presiona espacio fuera del rango
+          const calcularDestinoHabilidadEspacio = (origen, destino, maxRange) => {
+            const dx = destino.x - origen.x;
+            const dy = destino.y - origen.y;
+            const distancia = Math.sqrt(dx * dx + dy * dy);
+            if (distancia > maxRange) {
+              const angulo = Math.atan2(dy, dx);
+              return {
+                x: origen.x + Math.cos(angulo) * maxRange,
+                y: origen.y + Math.sin(angulo) * maxRange
+              };
+            } else {
+              return destino;
+            }
+          };
+          const destinoFinal = calcularDestinoHabilidadEspacio(localPlayer, { x: targetX, y: targetY }, mejoraEspacio.maxRange);
+          targetX = destinoFinal.x;
+          targetY = destinoFinal.y;
           // Emitir evento de teleport or dash
           if (mejoraEspacio.id === 'embestida') {
             socket.emit('dashPlayer', {
@@ -1669,9 +1491,9 @@ function dibujarMurosDePiedra(ctx, offsetX, offsetY) {
         2 * Math.PI
       );
       ctx.fill();
-      ctx.setTransform(1, 0, 0, 1, 0, 0);
+      ctx.setTransform(1,  0, 0, 1, 0, 0);
     } else {
-      ctx.fillRect(muro.x - offsetX - muro.radius, muro.y - offsetY - muro.radius, muro.radius * 2, muro.radius * 2);
+      ctx.fillRect(muro.x - offsetX - muro.y - offsetY - muro.radius, muro.y - offsetY - muro.radius, muro.radius * 2, muro.radius * 2);
     }
     ctx.restore();
   });
@@ -1696,6 +1518,15 @@ function handleKeyUp(e) {
 // Movimiento WASD con envío suave cada frame
 socket.on('gameStarted', (updatedSala) => {
   sala = updatedSala;
+  // Centrar a los jugadores en el mapa (servidor ya lo hace, pero aseguramos aquí)
+  if (sala.players.length >= 2) {
+    const centerY = MAP_HEIGHT / 2;
+    const centerX = MAP_WIDTH / 2;
+    sala.players[0].x = centerX - 150;
+    sala.players[0].y = centerY;
+    sala.players[1].x = centerX + 150;
+    sala.players[1].y = centerY;
+  }
   // Ocultar completamente la sala
   document.querySelector('.container').style.display = 'none';
   // Mostrar canvas
@@ -1703,6 +1534,10 @@ socket.on('gameStarted', (updatedSala) => {
   canvas.style.display = 'block';
   // Inicializar juego
   initGame();
+  // Mostrar HUD de selección de mejoras en ronda 1
+  if (sala.round === 1) {
+    mostrarHUDSeleccionHabilidades();
+  }
 });
 socket.on('playerMoved', (data) => {
   const { nick, x, y } = data;
@@ -1885,14 +1720,14 @@ socket.on('shieldDamage', (data) => {
 });
 
 socket.on('shieldDamage', (data) => {
-  showShieldAbsorbed(data);
+  showShieldAbsorb(data);
 });
 
 socket.on('availableUpgrades', (data) => {
   if (data.nick === user.nick) {
     availableUpgrades = data.upgrades;
     console.log('Available upgrades received:', availableUpgrades.length, availableUpgrades.map(m => m.nombre));
-    mostrarHUDMejoras();
+    // mostrarHUDMejoras();
   }
 });
 
@@ -2047,7 +1882,9 @@ function checkSpectatorMode() {
       spectMsg.style.padding = '16px 32px';
       spectMsg.style.borderRadius = '12px';
       spectMsg.style.zIndex = '2000';
-      spectMsg.textContent = '¡Has sido derrotado! Eres espectador.';
+      spectMsg.style.textAlign = 'center';
+      spectMsg.style.width = '300px';
+      spectMsg.style.maxWidth = '90vw';
       document.body.appendChild(spectMsg);
     }
   } else if (spectMsg) {
@@ -2067,7 +1904,7 @@ socket.on('roundEnded', (data) => {
   window.murosDePiedra = []; // Clear walls
   currentRound++;
   if (currentRound >= 5) { // Para rondas 5+ mostrar proyectilQ, rondas 1 y 2 usan availableUpgrades
-    mostrarHUDMejoras(true);
+    // mostrarHUDMejoras(true);
   }
   availableUpgrades = null; // Resetear para rondas posteriores
   // Limpiar explosiones
@@ -2125,6 +1962,10 @@ socket.on('castEnded', (data) => {
   activeCasts = activeCasts.filter(cast =>
     !(cast.position.x === data.position.x && cast.position.y === data.position.y && cast.player === data.player)
   );
+});
+
+socket.on('startBattle', () => {
+  iniciarCombate();
 });
 
 socket.on('muddyGroundCreated', (data) => {
@@ -2226,4 +2067,172 @@ function mostrarStatsFinales(stats, winner) {
   }, 1000);
 
   document.body.appendChild(modal);
+}
+
+// Función para mostrar HUD profesional de selección de mejoras para la ronda 1, con 3 habilidades al azar por sección, colores, tooltips y temporizador.
+function mostrarHUDSeleccionHabilidades() {
+  // Oculta el HUD antiguo si existe
+  const hudAntiguo = document.getElementById('hudMejorasInicial');
+  if (hudAntiguo) hudAntiguo.remove();
+  if (document.getElementById('habilidadesHUD')) return;
+  hudVisible = true;
+  const hud = document.createElement('div');
+  hud.id = 'habilidadesHUD';
+  hud.style.position = 'fixed';
+  hud.style.top = '50%';
+  hud.style.left = '50%';
+  hud.style.transform = 'translate(-50%, -50%)';
+  hud.style.background = 'rgba(255,255,255,0.98)';
+  hud.style.padding = '40px 48px';
+  hud.style.borderRadius = '32px';
+  hud.style.boxShadow = '0 8px 48px rgba(0,0,0,0.30)';
+  hud.style.zIndex = '1000';
+  hud.style.pointerEvents = 'none';
+  hud.style.textAlign = 'center';
+  hud.style.width = '900px';
+  hud.style.maxWidth = '98vw';
+  hud.style.maxHeight = '92vh';
+  hud.style.overflowY = 'auto';
+  hud.style.border = '2px solid #222';
+
+  // Título
+  const title = document.createElement('h2');
+  title.textContent = 'Selecciona tus habilidades para cada tecla';
+  title.style.marginBottom = '32px';
+  title.style.fontSize = '2.2rem';
+  title.style.fontWeight = 'bold';
+  title.style.color = '#222';
+  hud.appendChild(title);
+
+  // Crear secciones para cada tecla
+  const teclas = [
+    { nombre: 'Click Izquierdo', filtro: m => m.proyectil && !m.proyectilQ && !m.proyectilE && !m.proyectilEspacio },
+    { nombre: 'Q', filtro: m => m.proyectilQ },
+    { nombre: 'E', filtro: m => m.proyectilE },
+    { nombre: 'Espacio', filtro: m => m.proyectilEspacio }
+  ];
+  teclas.forEach(tecla => {
+    const section = document.createElement('div');
+    section.style.marginBottom = '28px';
+    section.style.padding = '0 0 8px 0';
+    section.style.borderBottom = '1px solid #eee';
+    const label = document.createElement('h3');
+    label.textContent = `Habilidades ${tecla.nombre}`;
+    label.style.fontSize = '1.35rem';
+    label.style.fontWeight = 'bold';
+    label.style.marginBottom = '18px';
+    label.style.color = '#333';
+    section.appendChild(label);
+    // Seleccionar 3 habilidades al azar para cada sección
+    let habilidades = MEJORAS.filter(tecla.filtro);
+    if (habilidades.length > 3) {
+      habilidades = habilidades
+        .map(h => ({h, sort: Math.random()}))
+        .sort((a, b) => a.sort - b.sort)
+        .map(({h}) => h)
+        .slice(0, 3);
+    }
+    const grid = document.createElement('div');
+    grid.style.display = 'flex';
+    grid.style.justifyContent = 'center';
+    grid.style.gap = '18px';
+    grid.style.flexWrap = 'wrap';
+
+    habilidades.forEach(hab => {
+      const btn = document.createElement('button');
+      btn.textContent = hab.nombre;
+      btn.style.padding = '14px 28px';
+      btn.style.borderRadius = '16px';
+      btn.style.border = `2.5px solid ${hab.color}`;
+      btn.style.background = 'linear-gradient(90deg, #f5f5f5 70%, #e3e3e3 100%)';
+      btn.style.cursor = 'pointer';
+      btn.style.fontWeight = 'bold';
+      btn.style.fontSize = '1.1rem';
+      btn.style.color = hab.color;
+      btn.style.boxShadow = `0 2px 12px ${hab.color}33`;
+      btn.style.pointerEvents = 'auto';
+      btn.onmouseenter = (e) => {
+        btn.style.background = `linear-gradient(90deg, ${hab.color}22 0%, #f5f5f5 100%)`;
+        btn.style.transform = 'scale(1.07)';
+        // Custom tooltip
+        let tooltip = document.createElement('div');
+        tooltip.className = 'mejora-tooltip';
+        tooltip.textContent = hab.descripcion || '';
+        tooltip.style.position = 'fixed';
+        tooltip.style.left = (e.clientX + 18) + 'px';
+        tooltip.style.top = (e.clientY - 12) + 'px';
+        tooltip.style.background = '#222';
+        tooltip.style.color = '#fff';
+        tooltip.style.padding = '12px 18px';
+        tooltip.style.borderRadius = '12px';
+        tooltip.style.fontSize = '1rem';
+        tooltip.style.zIndex = '2000';
+        tooltip.style.boxShadow = '0 2px 12px #0006';
+        tooltip.style.maxWidth = '340px';
+        tooltip.style.pointerEvents = 'none';
+        document.body.appendChild(tooltip);
+        btn._tooltip = tooltip;
+      };
+      btn.onmouseleave = () => {
+        btn.style.background = 'linear-gradient(90deg, #f5f5f5 70%, #e3e3e3 100%)';
+        btn.style.transform = 'scale(1)';
+        if (btn._tooltip) {
+          btn._tooltip.remove();
+          btn._tooltip = null;
+        }
+      };
+      btn.onclick = () => {
+        // Oculta todos los botones menos el seleccionado
+        Array.from(grid.children).forEach(child => {
+          if (child !== btn) {
+            child.style.display = 'none';
+          } else {
+            child.style.background = `linear-gradient(90deg, ${hab.color}44 0%, #b3e5fc 100%)`;
+            child.style.color = '#222';
+            child.style.transform = 'scale(1.12)';
+          }
+        });
+        socket.emit('selectUpgrade', { roomId, mejoraId: hab.id });
+        // Set local variable for immediate use
+        if (tecla.nombre === 'Click Izquierdo') {
+          mejoraSeleccionada = hab;
+        } else if (tecla.nombre === 'Q') {
+          mejoraQSeleccionada = hab;
+        }
+        // For E and Espacio, they will be added to mejorasJugador via playerUpgraded event
+      };
+      grid.appendChild(btn);
+    });
+    section.appendChild(grid);
+    hud.appendChild(section);
+  });
+
+  // Temporizador de 10 segundos
+  const timerDiv = document.createElement('div');
+  timerDiv.style.marginTop = '40px';
+  timerDiv.style.fontSize = '1.5rem';
+  timerDiv.style.fontWeight = 'bold';
+  timerDiv.style.color = '#2e7d32';
+  timerDiv.textContent = 'Tiempo restante: 10s';
+  hud.appendChild(timerDiv);
+
+  let timeLeft = 10;
+  const timerInterval = setInterval(() => {
+    timeLeft--;
+    timerDiv.textContent = `Tiempo restante: ${timeLeft}s`;
+    if (timeLeft <= 0) {
+      clearInterval(timerInterval);
+      ocultarHUDSeleccionHabilidades();
+      socket.emit('startBattle', { roomId });
+    }
+  }, 1000);
+
+  document.body.appendChild(hud);
+}
+
+function ocultarHUDSeleccionHabilidades() {
+  hudVisible = false;
+  document.querySelectorAll('.mejora-tooltip').forEach(t => t.remove());
+  const hud = document.getElementById('habilidadesHUD');
+  if (hud) hud.remove();
 }
