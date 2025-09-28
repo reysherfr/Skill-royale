@@ -163,8 +163,8 @@ function colisionJugadorMuro(playerX, playerY, muro) {
   const ry = muro.height + 32;
   return (localX * localX) / (rx * rx) + (localY * localY) / (ry * ry) <= 1;
 }
-const MAP_WIDTH = 2000;
-const MAP_HEIGHT = 1200;
+const MAP_WIDTH = 2500;
+const MAP_HEIGHT = 1500;
 const WALL_THICKNESS = 24;
 // ...existing code...
 import { MEJORAS, Proyectil } from './mejoras.shared.js';
@@ -1107,10 +1107,10 @@ function drawMap() {
   // Si está casteando Roca fangosa, dibujar círculos de cast que se llenan
   for (let i = activeCasts.length - 1; i >= 0; i--) {
     const cast = activeCasts[i];
-    const now = Date.now();
+    const now = performance.now();
     const elapsed = now - cast.startTime;
     const castTime = cast.mejora && cast.mejora.castTime ? cast.mejora.castTime : 1500;
-    const progress = Math.min(elapsed / castTime, 1);
+    const progress = Math.min(Math.max(elapsed / castTime, 0), 1);
     const castX = cast.position.x - offsetX;
     const castY = cast.position.y - offsetY;
     const radius = cast.mejora.radius || 20;

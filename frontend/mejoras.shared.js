@@ -156,13 +156,13 @@ const MEJORAS = [
   effect: { type: 'dot', damage: 5, duration: 3000 },
   proyectilQ: true,
   radius: 24,
-  aimRange: 500, // Rango máximo de skill shot
-  maxRange: 500, // Limite real de distancia
+  aimRange: 580, // Rango máximo de skill shot
+  maxRange: 580, // Limite real de distancia
   explosionDamage: 25, // Daño en área por explosión
-  explosionRadius: 150, // Radio de la explosión
+  explosionRadius: 185, // Radio de la explosión
   activacionRapida: false, // Requiere apuntar
   elemento: 'fuego',
-  descripcion: 'Daño: 50 directo, Velocidad: 11, Radio: 24, CD: 4 segundos, Rango: 500. Explota al impactar o al final del rango, causando 25 de daño en área (radio 150). Aplica quemadura: 5 daño/seg por 3 segundos.'
+  descripcion: 'Daño: 50 directo, Velocidad: 11, Radio: 24, CD: 4 segundos, Rango: 580. Explota al impactar o al final del rango, causando 25 de daño en área (radio 185). Aplica quemadura: 5 daño/seg por 3 segundos.'
   }
   ,
   {
@@ -171,15 +171,15 @@ const MEJORAS = [
   color: 'deepskyblue',
   velocidad: 15,
   danio: 32,
-  cooldown: 6000, // 6 segundos
+  cooldown: 7000, // 6 segundos
   effect: { type: 'slow', amount: 0.25, duration: 1500 },
   proyectilQ: true,
   radius: 17,
-  aimRange: 350, // Rango máximo de skill shot
-  maxRange: 350, // Limite real de distancia
+  aimRange: 320, // Rango máximo de skill shot
+  maxRange: 320, // Limite real de distancia
   activacionRapida: false, // Requiere apuntar
   elemento: 'hielo',
-  descripcion: 'Daño: 32, Velocidad: 15, Radio: 17, CD: 6 segundos, Rango: 350. al impactar o llegar al final, genera 3 Cuchillas frías menores que se dispersan. Relentiza un 25% por 1.5 segundos.'
+  descripcion: 'Daño: 32, Velocidad: 15, Radio: 17, CD: 7 segundos, Rango: 350. al impactar o llegar al final, genera 3 Cuchillas frías menores que se dispersan. Relentiza un 25% por 1.5 segundos.'
   }
   ,
   {
@@ -204,17 +204,17 @@ MEJORAS.push({
   nombre: 'Roca fangosa',
   color: 'saddlebrown',
   velocidad: 12, // Valor sugerido, puedes ajustar
-  danio: 40,
-  cooldown: 3000, // 3 segundos
+  danio: 65,
+  cooldown: 6000, // 6 segundos
   proyectilQ: true,
-  radius: 95,
+  radius: 105,
   aimRange: 680,
   maxRange: 680,
   skyfall: true,
-  castTime: 1300, // 1.3 segundos
+  castTime: 700, // 0.7 segundos
   activacionRapida: false, // Requiere apuntar
   elemento: 'roca',
-  descripcion: 'Daño: 40, CD: 3s, Radio: 95, Rango: 680, castTime: 1.3s. roca que cae del cielo tras 1.3s en el área objetivo, generando un área de lodo que ralentiza a los enemigos un 50% durante 2s.',
+  descripcion: 'Daño: 65, CD: 6s, Radio: 105, Rango: 680, castTime: 0.7s. roca que cae del cielo tras 0.7s en el área objetivo, generando un área de lodo que ralentiza a los enemigos un 50% durante 2s.',
 });
 
 // Exportación ES Module para frontend y backend
@@ -227,18 +227,18 @@ MEJORAS.push({
   color: '#8B5A2B', // café
   velocidad: 0, // No se mueve
   danio: 0, // No hace daño
-  cooldown: 4000, // 4 segundos
+  cooldown: 8000, // 8 segundos
   proyectilE: true,
   radius: 35, // radio base (no usado para óvalo)
   width: 105, // largo del muro (horizontal)
   height: 28, // alto del muro (ovalado)
   aimRange: 350,
   maxRange: 350,
-  duracion: 4500, // 4.5 segundos
-  castTime: 200, // 0.7 segundos
+  duracion: 3500, // 3.5 segundos
+  castTime: 200, // 0.2 segundos
   activacionRapida: false, // Requiere apuntar
   elemento: 'roca',
-  descripcion: 'Crea un muro de piedra que te protege de proyectiles. CD: 4s, duración: 4.5s, rango: 350px.'
+  descripcion: 'Crea un muro de piedra que te protege de proyectiles. CD: 8s, duración: 3.5s, rango: 350px.'
 });
 // Habilidad tipo proyectilE: Suelo Sagrado
 MEJORAS.push({

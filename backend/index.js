@@ -103,26 +103,24 @@ io.on('connection', (socket) => {
     if (sala.players.length < 2) return; // Necesita al menos 2 jugadores
     // Inicializar ronda por sala si no existe
     sala.round = 1;
-    // Distribuir hasta 4 jugadores alrededor del centro
-    const centerX = 2000 / 2;
-    const centerY = 1200 / 2;
+    // Distribuir hasta 4 jugadores en las esquinas
     const offset = 200;
     sala.players.forEach((player, i) => {
-      if (i === 0) { // izquierda
-        player.x = centerX - offset;
-        player.y = centerY;
-      } else if (i === 1) { // derecha
-        player.x = centerX + offset;
-        player.y = centerY;
-      } else if (i === 2) { // arriba
-        player.x = centerX;
-        player.y = centerY - offset;
-      } else if (i === 3) { // abajo
-        player.x = centerX;
-        player.y = centerY + offset;
+      if (i === 0) { // esquina arriba-izquierda
+        player.x = offset;
+        player.y = offset;
+      } else if (i === 1) { // esquina arriba-derecha
+        player.x = 2500 - offset;
+        player.y = offset;
+      } else if (i === 2) { // esquina abajo-izquierda
+        player.x = offset;
+        player.y = 1500 - offset;
+      } else if (i === 3) { // esquina abajo-derecha
+        player.x = 2500 - offset;
+        player.y = 1500 - offset;
       } else {
-        player.x = centerX;
-        player.y = centerY;
+        player.x = 1250;
+        player.y = 750;
       }
       player.speed = DEFAULT_SPEED;
       player.slowUntil = 0;
@@ -669,8 +667,8 @@ setInterval(() => {
         const moveDistance = (player.speed || DEFAULT_SPEED) * (12 / 16);
         let newX = (typeof player.x === 'number' ? player.x : 1000) + dx * moveDistance;
         let newY = (typeof player.y === 'number' ? player.y : 600) + dy * moveDistance;
-        newX = Math.max(0, Math.min(2000, newX));
-        newY = Math.max(0, Math.min(1200, newY));
+        newX = Math.max(0, Math.min(2500, newX));
+        newY = Math.max(0, Math.min(1500, newY));
         let puedeMover = true;
         if (murosPorSala[sala.id]) {
           for (const muro of murosPorSala[sala.id]) {
@@ -867,8 +865,8 @@ setInterval(() => {
       // Eliminar si sale del mapa o supera su vida máxima
       let destroy = false;
       if (
-        p.x < 0 || p.x > 2000 ||
-        p.y < 0 || p.y > 1200 ||
+        p.x < 0 || p.x > 2500 ||
+        p.y < 0 || p.y > 1500 ||
         (p.maxLifetime && p.lifetime >= p.maxLifetime)
       ) {
         destroy = true;
@@ -931,9 +929,9 @@ setInterval(() => {
               muddyGroundsPorSala[sala.id].push({
                 x: p.targetX,
                 y: p.targetY,
-                radius: 125,
+                radius: 165,
                 slowAmount: 0.2,
-                duration: 3000,
+                duration: 4000,
                 createdAt: Date.now()
               });
               // Emit to frontend to draw the muddy ground
@@ -1307,25 +1305,23 @@ setInterval(() => {
       if (muddyGroundsPorSala[sala.id]) muddyGroundsPorSala[sala.id] = [];
       if (murosPorSala[sala.id]) murosPorSala[sala.id] = [];
       // Reposicionar jugadores (igual que al iniciar partida)
-      const centerX = 2000 / 2;
-      const centerY = 1200 / 2;
       const offset = 200;
       jugadores.forEach((player, i) => {
-        if (i === 0) {
-          player.x = centerX - offset;
-          player.y = centerY;
-        } else if (i === 1) {
-          player.x = centerX + offset;
-          player.y = centerY;
-        } else if (i === 2) {
-          player.x = centerX;
-          player.y = centerY - offset;
-        } else if (i === 3) {
-          player.x = centerX;
-          player.y = centerY + offset;
+        if (i === 0) { // esquina arriba-izquierda
+          player.x = offset;
+          player.y = offset;
+        } else if (i === 1) { // esquina arriba-derecha
+          player.x = 2500 - offset;
+          player.y = offset;
+        } else if (i === 2) { // esquina abajo-izquierda
+          player.x = offset;
+          player.y = 1500 - offset;
+        } else if (i === 3) { // esquina abajo-derecha
+          player.x = 2500 - offset;
+          player.y = 1500 - offset;
         } else {
-          player.x = centerX;
-          player.y = centerY;
+          player.x = 1250;
+          player.y = 750;
         }
         player.speed = DEFAULT_SPEED;
         player.slowUntil = 0;
