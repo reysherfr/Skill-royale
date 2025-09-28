@@ -526,12 +526,15 @@ io.on('connection', (socket) => {
       sala.host = { ...sala.players[0] };
       io.to(sala.id).emit('hostChanged', sala.host);
     }
-    // Si ya no quedan jugadores, puedes eliminar la sala o marcarla inactiva
-    if (sala.players.length === 0) {
-      sala.active = false;
-      // Opcional: eliminar la sala del array
-      // salas = salas.filter(s => s.id !== sala.id);
-    }
+      // Solo marcar la sala como inactiva si NO quedan jugadores
+      if (sala.players.length === 0) {
+        sala.active = false;
+        console.log(`[DEBUG] Sala ${sala.id} marcada como inactiva porque no quedan jugadores.`);
+        // Opcional: eliminar la sala del array
+        // salas = salas.filter(s => s.id !== sala.id);
+      } else {
+        console.log(`[DEBUG] Sala ${sala.id} sigue activa con ${sala.players.length} jugadores.`);
+      }
     // Notificar a la sala y a todos los clientes
     io.to(sala.id).emit('playerLeft', sala);
     io.emit('roomsUpdated');
@@ -1478,9 +1481,9 @@ app.post('/stats/:nick', (req, res) => {
   });
 });
 app.get('/rooms', (req, res) => {
-  // Solo mostrar salas con menos de 4 jugadores
-  const disponibles = salas.filter(s => s.active && s.players.length < 4);
-  res.json({ success: true, salas: disponibles });
+  // Mostrar todas las salas activas
+  const activas = salas.filter(s => s.active);
+  res.json({ success: true, salas: activas });
 });
 
 // Endpoint para eliminar una sala (host sale)
@@ -1499,18 +1502,29 @@ app.post('/delete-room', (req, res) => {
 // Endpoint para unirse a una sala
 app.post('/join-room', (req, res) => {
   const { id, nick, nivel } = req.body;
-  if (!id || !nick || !nivel) return res.status(400).json({ error: 'Datos requeridos.' });
+  console.log(`[DEBUG] Intentando unir a sala: id=${id}, nick=${nick}, nivel=${nivel}`);
+  if (!id || !nick || !nivel) {
+    console.log('[DEBUG] Datos requeridos faltantes');
+    return res.status(400).json({ error: 'Datos requeridos.' });
+  }
   const sala = salas.find(s => s.id === id && s.active !== false);
-  if (!sala) return res.status(404).json({ error: 'Sala no encontrada.' });
+  if (!sala) {
+    console.log(`[DEBUG] Sala no encontrada o inactiva: id=${id}`);
+    return res.status(404).json({ error: 'Sala no encontrada.' });
+  }
+  console.log(`[DEBUG] Sala encontrada: id=${sala.id}, jugadores=${sala.players.length}, active=${sala.active}`);
   // Verificar si ya está en la sala
   if (sala.players.find(p => p.nick === nick)) {
+    console.log(`[DEBUG] El jugador ${nick} ya está en la sala.`);
     return res.json({ success: true, sala });
   }
   // Verificar si hay espacio
   if (sala.players.length >= 4) {
+    console.log(`[DEBUG] Sala llena: id=${id}, jugadores=${sala.players.length}`);
     return res.status(400).json({ error: 'Sala llena.' });
   }
   sala.players.push({ nick, nivel, mejoras: [] });
+  console.log(`[DEBUG] Jugador ${nick} añadido a la sala ${id}. Ahora hay ${sala.players.length} jugadores.`);
   // Emitir evento en tiempo real
   io.to(id).emit('playerJoined', sala);
   io.emit('roomsUpdated');
