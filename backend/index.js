@@ -192,6 +192,17 @@ io.on('connection', (socket) => {
     // Buscar la mejora
     const mejora = MEJORAS.find(m => m.id === data.mejoraId);
     if (!mejora) return; // Si no existe, ignorar
+    // Calcular radio modificado por 'agrandar' si el jugador tiene ese aumento
+    let modifiedRadius = mejora.radius;
+    let salaActual = salas.find(s => s.id === data.roomId && s.active);
+    let player = null;
+    if (salaActual) {
+      player = salaActual.players.find(p => p.nick === data.owner);
+      if (player && player.mejoras) {
+        const agrandadores = player.mejoras.filter(m => m.id === 'agrandar');
+        modifiedRadius = (mejora.radius || 20) + (agrandadores.length * 10);
+      }
+    }
     if (mejora.id === 'muro_piedra') {
       if (!murosPorSala[data.roomId]) murosPorSala[data.roomId] = [];
       // Calcular ángulo para el muro (igual que en frontend)
@@ -204,7 +215,7 @@ io.on('connection', (socket) => {
         creado: Date.now(),
         duracion: mejora.duracion || 2000,
         color: mejora.color,
-        radius: mejora.radius,
+        radius: modifiedRadius,
         width: mejora.width,
         height: mejora.height,
         angle: angle
@@ -270,7 +281,7 @@ io.on('connection', (socket) => {
       sacredGroundsPorSala[data.roomId].push({
         x: data.x,
         y: data.y,
-        radius: mejora.radius,
+        radius: modifiedRadius,
         owner: data.owner,
         createdAt: Date.now(),
         duration: mejora.duracion,
@@ -281,7 +292,7 @@ io.on('connection', (socket) => {
       io.to(data.roomId).emit('sacredGroundCreated', {
         x: data.x,
         y: data.y,
-        radius: mejora.radius,
+        radius: modifiedRadius,
         duration: mejora.duracion,
         owner: data.owner
       });
@@ -344,6 +355,17 @@ io.on('connection', (socket) => {
       targetX = data.x + Math.cos(data.angle) * range;
       targetY = data.y + Math.sin(data.angle) * range;
     }
+    // Calcular radius con mejoras
+    let radius = mejora.radius || 16;
+    const sala = salas.find(s => s.id === data.roomId);
+    if (sala) {
+      const player = sala.players.find(p => p.nick === data.owner);
+      if (player && (mejora.proyectil || mejora.proyectilQ)) {
+        const agrandadores = player.mejoras.filter(m => m.id === 'agrandar');
+        const numAgrandadores = agrandadores.length;
+        radius += numAgrandadores * 10;
+      }
+    }
     proyectilesPorSala[data.roomId].push({
       id: ++projectileIdCounter, // Asignar ID único
       x: startX,
@@ -354,6 +376,7 @@ io.on('connection', (socket) => {
       owner: data.owner,
       lifetime: 0,
       maxLifetime: mejora.maxLifetime || 1200, // fallback
+      radius,
       targetX,
       targetY,
       skillShot,
@@ -913,7 +936,7 @@ setInterval(() => {
           const mejora = MEJORAS.find(m => m.id === p.mejoraId);
           if (mejora && mejora.skyfall) {
             // Para skyfall, aplicar daño en área en el target cuando llega al suelo
-            const skyfallRadius = mejora.radius || 20; // Usar el radio de la mejora
+            const skyfallRadius = p.radius; // Usar el radio agrandado del proyectil
             for (const jugador of jugadores) {
               if (jugador.nick === p.owner || jugador.defeated) continue;
               const jdx = jugador.x - p.targetX;
@@ -931,7 +954,7 @@ setInterval(() => {
               muddyGroundsPorSala[sala.id].push({
                 x: p.targetX,
                 y: p.targetY,
-                radius: 165,
+                radius: p.radius * 1.57, // Ajustar al radio agrandado
                 slowAmount: 0.2,
                 duration: 4000,
                 createdAt: Date.now()
@@ -940,7 +963,7 @@ setInterval(() => {
               io.to(sala.id).emit('muddyGroundCreated', {
                 x: p.targetX,
                 y: p.targetY,
-                radius: 125,
+                radius: p.radius * 1.19, // Ajustar al radio agrandado
                 duration: 3000
               });
             }
@@ -951,6 +974,13 @@ setInterval(() => {
               const baseAngle = p.angle;
               const angles = [baseAngle, baseAngle + Math.PI/6, baseAngle - Math.PI/6]; // 30° de separación
               for (const ang of angles) {
+                const player = sala.players.find(pl => pl.nick === p.owner);
+                let radiusMenor = 10;
+                if (player) {
+                  const agrandadores = player.mejoras.filter(m => m.id === 'agrandar');
+                  const numAgrandadores = agrandadores.length;
+                  radiusMenor += numAgrandadores * 10;
+                }
                 proyectiles.push({
                   id: ++projectileIdCounter,
                   x: p.x,
@@ -960,7 +990,7 @@ setInterval(() => {
                   mejoraId: 'cuchilla_fria_menor',
                   owner: p.owner,
                   lifetime: 0,
-                  radius: 10,
+                  radius: radiusMenor,
                   skillShot: true,
                   // Usar el rango definido en MEJORAS
                   targetX: p.x + Math.cos(ang) * (MEJORAS.find(m => m.id === 'cuchilla_fria_menor')?.maxRange || 200),
@@ -1022,6 +1052,13 @@ setInterval(() => {
             const impactadoNick = jugador.nick;
             const angles = [salidaAngle, salidaAngle + Math.PI/6, salidaAngle - Math.PI/6];
             for (const ang of angles) {
+              const player = sala.players.find(pl => pl.nick === p.owner);
+              let radiusMenor = 10;
+              if (player) {
+                const agrandadores = player.mejoras.filter(m => m.id === 'agrandar');
+                const numAgrandadores = agrandadores.length;
+                radiusMenor += numAgrandadores * 10;
+              }
               proyectiles.push({
                 id: ++projectileIdCounter,
                 x: baseX,
@@ -1031,7 +1068,7 @@ setInterval(() => {
                 mejoraId: 'cuchilla_fria_menor',
                 owner: p.owner,
                 lifetime: 0,
-                radius: 10,
+                radius: radiusMenor,
                 skillShot: true,
                 // Usar el rango definido en MEJORAS
                 targetX: baseX + Math.cos(ang) * (MEJORAS.find(m => m.id === 'cuchilla_fria_menor')?.maxRange || 200),

@@ -1,7 +1,7 @@
 
 // Clase Proyectil compartida para frontend y backend
 class Proyectil {
-  constructor({ x, y, angle, mejora, owner, id, velocidad }) {
+  constructor({ x, y, angle, mejora, owner, id, velocidad, radius }) {
     this.id = id;
     this.x = x;
     this.y = y;
@@ -10,7 +10,7 @@ class Proyectil {
     this.angle = angle;
     this.mejora = mejora; // objeto de MEJORAS
     this.owner = owner; // nick del jugador
-    this.radius = (mejora && mejora.radius) ? mejora.radius : 16;
+    this.radius = radius || ((mejora && mejora.radius) ? mejora.radius : 16);
     const vel = velocidad || mejora.velocidad;
     this.vx = Math.cos(angle) * vel;
     this.vy = Math.sin(angle) * vel;
@@ -108,6 +108,17 @@ const MEJORAS = [
     efecto: {
       velocidad: 8,
       maxRange: 150
+    }
+  },
+  {
+    id: 'agrandar',
+    nombre: 'Agrandar',
+    aumento: true,
+    stack: true,
+    aplicaA: ['proyectil', 'proyectilQ'],
+    descripcion: 'Aumenta el radio del proyectil en +10.',
+    efecto: {
+      radius: 10
     }
   },
   {

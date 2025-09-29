@@ -1,3 +1,9 @@
+// Devuelve el radio final de una mejora considerando aumentos 'agrandar'
+function getMejoraRadius(mejora, jugador) {
+  const baseRadius = mejora.radius || 20;
+  const agrandadores = jugador.mejoras ? jugador.mejoras.filter(m => m.id === 'agrandar') : [];
+  return baseRadius + (agrandadores.length * 10);
+}
 // HUD de aumentos para ronda 2
 function mostrarHUDAumentosRonda2() {
   // Oculta el HUD antiguo si existe
@@ -991,10 +997,11 @@ function drawMap() {
       ctx.stroke();
       ctx.setLineDash([]); // Resetear
       ctx.restore();
-      // Dibujar círculo en la posición del mouse
+      // Dibujar círculo en la posición del mouse ajustando el radio si tiene el aumento 'agrandar'
+  const modifiedRadius = getMejoraRadius(mejoraQSeleccionada, localPlayer);
       ctx.save();
       ctx.beginPath();
-      ctx.arc(mouseX, mouseY, mejoraQSeleccionada.radius || 20, 0, 2 * Math.PI);
+      ctx.arc(mouseX, mouseY, modifiedRadius, 0, 2 * Math.PI);
       ctx.strokeStyle = 'rgba(0, 0, 255, 0.5)'; // Azul transparente
       ctx.lineWidth = 2;
       ctx.stroke();
@@ -1069,7 +1076,8 @@ function drawMap() {
     const progress = Math.min(Math.max(elapsed / castTime, 0), 1);
     const castX = cast.position.x - offsetX;
     const castY = cast.position.y - offsetY;
-    const radius = cast.mejora.radius || 20;
+    const localPlayer = players.find(p => p.nick === cast.player);
+    const modifiedRadius = localPlayer ? getMejoraRadius(cast.mejora, localPlayer) : (cast.mejora.radius || 20);
     if (cast.mejora.id === 'muro_piedra') {
       // Usar el ángulo guardado en la mejora para el muro de carga
       let angle = cast.mejora.lastCastAngle !== undefined ? cast.mejora.lastCastAngle : 0;
@@ -1092,8 +1100,12 @@ function drawMap() {
         );
         ctx.stroke();
         ctx.setTransform(1, 0, 0, 1, 0, 0);
+      } else if (cast.mejora.id === 'roca_fangosa') {
+        ctx.beginPath();
+        ctx.arc(castX, castY, modifiedRadius, 0, 2 * Math.PI);
+        ctx.stroke();
       } else {
-        ctx.strokeRect(castX - radius, castY - radius, radius * 2, radius * 2);
+        ctx.strokeRect(castX - modifiedRadius, castY - modifiedRadius, modifiedRadius * 2, modifiedRadius * 2);
       }
       ctx.restore();
       // Óvalo de progreso (relleno)
@@ -1114,15 +1126,19 @@ function drawMap() {
         );
         ctx.fill();
         ctx.setTransform(1, 0, 0, 1, 0, 0);
+      } else if (cast.mejora.id === 'roca_fangosa') {
+        ctx.beginPath();
+        ctx.arc(castX, castY, modifiedRadius * progress, 0, 2 * Math.PI);
+        ctx.fill();
       } else {
-        ctx.fillRect(castX - radius, castY - radius, radius * 2 * progress, radius * 2);
+        ctx.fillRect(castX - modifiedRadius * progress, castY - modifiedRadius * progress, modifiedRadius * 2 * progress, modifiedRadius * 2 * progress);
       }
       ctx.restore();
     } else {
       // Círculo de fondo
       ctx.save();
       ctx.beginPath();
-      ctx.arc(castX, castY, radius, 0, 2 * Math.PI);
+  ctx.arc(castX, castY, modifiedRadius, 0, 2 * Math.PI);
       ctx.strokeStyle = 'saddlebrown';
       ctx.lineWidth = 3;
       ctx.stroke();
@@ -1130,7 +1146,7 @@ function drawMap() {
       // Círculo de progreso (relleno)
       ctx.save();
       ctx.beginPath();
-      ctx.arc(castX, castY, radius * progress, 0, 2 * Math.PI);
+  ctx.arc(castX, castY, modifiedRadius * progress, 0, 2 * Math.PI);
       ctx.fillStyle = 'rgba(139, 69, 19, 0.5)'; // saddlebrown con alpha
       ctx.fill();
       ctx.restore();
@@ -1726,14 +1742,22 @@ socket.on('proyectilesUpdate', (proys) => {
     } else {
       // Crear nuevo
       const mejora = MEJORAS.find(m => m.id === pData.mejoraId);
+      const modifiedMejora = { ...mejora };
+      const player = players.find(p => p.nick === pData.owner);
+      if (player && (mejora.proyectil || mejora.proyectilQ)) {
+        const agrandadores = player.mejoras.filter(m => m.id === 'agrandar');
+        const numAgrandadores = agrandadores.length;
+        modifiedMejora.radius = (modifiedMejora.radius || 16) + (numAgrandadores * 10);
+      }
       const newP = new Proyectil({
         x: pData.x,
         y: pData.y,
         angle: pData.angle,
-        mejora,
+        mejora: modifiedMejora,
         owner: pData.owner,
         id: pData.id,
-        velocidad: pData.velocidad
+        velocidad: pData.velocidad,
+        radius: pData.radius
       });
       proyectiles.set(pData.id, newP);
     }
@@ -2376,7 +2400,7 @@ function mostrarHUDSeleccionHabilidades() {
   timerDiv.textContent = 'Tiempo restante: 10s';
   hud.appendChild(timerDiv);
 
-  let timeLeft = 10;
+  let timeLeft = 3;
   const timerInterval = setInterval(() => {
     timeLeft--;
     timerDiv.textContent = `Tiempo restante: ${timeLeft}s`;
