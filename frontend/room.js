@@ -39,6 +39,7 @@ function mostrarHUDAumentosRonda2() {
   grid.style.gap = '18px';
   grid.style.flexWrap = 'wrap';
 
+  let aumentoSeleccionado = null;
   aumentos.forEach(aum => {
     const btn = document.createElement('button');
     btn.textContent = aum.nombre;
@@ -91,8 +92,7 @@ function mostrarHUDAumentosRonda2() {
           child.style.transform = 'scale(1.12)';
         }
       });
-      socket.emit('selectUpgrade', { roomId, mejoraId: aum.id });
-      ocultarHUDAumentosRonda2();
+      aumentoSeleccionado = aum;
     };
     grid.appendChild(btn);
   });
@@ -113,10 +113,13 @@ function mostrarHUDAumentosRonda2() {
     timerDiv.textContent = `Tiempo restante: ${timeLeft}s`;
     if (timeLeft <= 0) {
       clearInterval(timerInterval);
-      // Si no se seleccionó, elegir uno aleatorio
-      if (aumentos.length > 0) {
-        const randomAumento = aumentos[Math.floor(Math.random() * aumentos.length)];
-        socket.emit('selectUpgrade', { roomId, mejoraId: randomAumento.id });
+      // Si el usuario seleccionó un aumento, usar ese. Si no, elegir uno aleatorio.
+      let aumentoFinal = aumentoSeleccionado;
+      if (!aumentoFinal && aumentos.length > 0) {
+        aumentoFinal = aumentos[Math.floor(Math.random() * aumentos.length)];
+      }
+      if (aumentoFinal) {
+        socket.emit('selectUpgrade', { roomId, mejoraId: aumentoFinal.id });
       }
       ocultarHUDAumentosRonda2();
     }
@@ -245,10 +248,6 @@ socket.on('gameStarted', (updatedSala) => {
   // Mostrar HUD de selección de mejoras en ronda 1
   if (sala.round === 1) {
     mostrarHUDSeleccionHabilidades();
-  }
-  // Mostrar HUD de aumentos en ronda 2
-  if (sala.round === 2) {
-    mostrarHUDAumentosRonda2();
   }
 });
 let proyectiles = new Map();
@@ -460,13 +459,10 @@ function handleMouseDown(e) {
   const angle = Math.atan2(dy, dx);
 
   // Aplicar potenciador si tiene y es proyectil
-  let velocidadFinal = mejoraSeleccionada.velocidad;
-  let maxRangeFinal = mejoraSeleccionada.maxRange;
-  const tienePotenciador = mejorasJugador.some(m => m.id === 'potenciador_proyectil');
-  if (tienePotenciador && mejoraSeleccionada.proyectil) {
-    velocidadFinal += 8;
-    maxRangeFinal += 150;
-  }
+  const potenciadores = mejorasJugador.filter(m => m.id === 'potenciador_proyectil');
+  const numPotenciadores = potenciadores.length;
+  let velocidadFinal = mejoraSeleccionada.velocidad + (numPotenciadores * 8);
+  let maxRangeFinal = mejoraSeleccionada.maxRange + (numPotenciadores * 150);
 
   // Emitir evento al backend para crear el proyectil
   socket.emit('shootProjectile', {
@@ -2051,6 +2047,9 @@ socket.on('roundEnded', (data) => {
   activeSacredGrounds = []; // Clear sacred grounds
   window.murosDePiedra = []; // Clear walls
   currentRound++;
+  if (currentRound >= 2 && currentRound <= 7) {
+    mostrarHUDAumentosRonda2();
+  }
   if (currentRound >= 5) { // Para rondas 5+ mostrar proyectilQ, rondas 1 y 2 usan availableUpgrades
     // mostrarHUDMejoras(true);
   }
@@ -2074,9 +2073,22 @@ socket.on('forceClose', () => {
 socket.on('playerUpgraded', (data) => {
   const player = players.find(p => p.nick === data.nick);
   if (player) {
-    player.mejoras = data.mejoras;
+    // Permitir stack ilimitado para aumentos con stack:true, y sin duplicados para los demás
+    const mejorasUnicas = [];
+    for (const m of data.mejoras) {
+      if (m.stack) {
+        // Siempre agregar aumentos con stack:true
+        mejorasUnicas.push(m);
+      } else {
+        // No permitir duplicados para los demás
+        if (!mejorasUnicas.some(mu => mu.id === m.id)) {
+          mejorasUnicas.push(m);
+        }
+      }
+    }
+    player.mejoras = mejorasUnicas;
     if (data.nick === user.nick) {
-      mejorasJugador = data.mejoras;
+      mejorasJugador = mejorasUnicas;
       // Separar mejoras normales de mejoras Q
       const mejorasNormales = mejorasJugador.filter(m => !m.proyectilQ && !m.proyectilE && !m.proyectilEspacio && !m.aumento);
       const mejorasQ = mejorasJugador.filter(m => m.proyectilQ);
@@ -2093,11 +2105,11 @@ socket.on('playerUpgraded', (data) => {
 
       console.log('Tus mejoras actualizadas:', mejorasJugador);
       console.log('Mejora seleccionada (click):', mejoraSeleccionada?.nombre);
-  console.log('Mejora Q seleccionada:', mejoraQSeleccionada?.nombre);
-  const mejoraESeleccionada = mejorasJugador.find(m => m.proyectilE);
-  console.log('Mejora seleccionada E:', mejoraESeleccionada?.nombre);
-  const mejoraEspacioSeleccionada = mejorasJugador.find(m => m.proyectilEspacio);
-  console.log('Mejora Espacio seleccionada:', mejoraEspacioSeleccionada?.nombre);
+      console.log('Mejora Q seleccionada:', mejoraQSeleccionada?.nombre);
+      const mejoraESeleccionada = mejorasJugador.find(m => m.proyectilE);
+      console.log('Mejora seleccionada E:', mejoraESeleccionada?.nombre);
+      const mejoraEspacioSeleccionada = mejorasJugador.find(m => m.proyectilEspacio);
+      console.log('Mejora Espacio seleccionada:', mejoraEspacioSeleccionada?.nombre);
     }
   }
 });
