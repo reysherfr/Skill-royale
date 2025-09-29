@@ -1,3 +1,5 @@
 node_modules/
-backend/users.db
-users.db
+*.db
+*.log
+frontend/ranks/
+backend/ranks/
