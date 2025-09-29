@@ -210,6 +210,8 @@ io.on('connection', (socket) => {
       const dy = data.targetY - data.y;
       const angle = Math.atan2(dy, dx) + Math.PI / 2;
       const muro = {
+        id: 'muro_piedra',
+        colision: true,
         x: data.targetX,
         y: data.targetY,
         creado: Date.now(),
@@ -887,18 +889,47 @@ setInterval(() => {
       p.x += Math.cos(p.angle) * p.velocidad;
       p.y += Math.sin(p.angle) * p.velocidad;
       p.lifetime = (p.lifetime || 0) + SIMULATION_DT;
-      // Eliminar si sale del mapa o supera su vida máxima
       let destroy = false;
-      if (
-        p.x < 0 || p.x > 2500 ||
-        p.y < 0 || p.y > 1500 ||
-        (p.maxLifetime && p.lifetime >= p.maxLifetime)
-      ) {
-        destroy = true;
+      let reboteado = false;
+      // Rebote en muros exteriores
+      let reboteStacks = 0;
+      const mejoraProyectil = MEJORAS.find(m => m.id === p.mejoraId);
+      // Solo proyectiles con proyectil: true
+      if (mejoraProyectil && mejoraProyectil.proyectil === true) {
+        const player = sala.players.find(pl => pl.nick === p.owner);
+        if (player) {
+          reboteStacks = player.mejoras.filter(m => m.id === 'rebote').length;
+        }
+        if (reboteStacks > 0 && p.rebotes === undefined) p.rebotes = 0;
+        // Rebote en bordes del mapa
+        if (reboteStacks > 0 && p.rebotes < reboteStacks) {
+          if (p.x < 0 || p.x > 2500) {
+            p.angle = Math.PI - p.angle;
+            p.rebotes = (p.rebotes || 0) + 1;
+            p.lifetime = 0;
+            // Recalcular destino y rango
+            const range = mejoraProyectil?.maxRange || 200;
+            p.targetX = p.x + Math.cos(p.angle) * range;
+            p.targetY = p.y + Math.sin(p.angle) * range;
+            reboteado = true;
+          }
+          if (p.y < 0 || p.y > 1500) {
+            p.angle = -p.angle;
+            p.rebotes = (p.rebotes || 0) + 1;
+            p.lifetime = 0;
+            // Recalcular destino y rango
+            const range = mejoraProyectil?.maxRange || 200;
+            p.targetX = p.x + Math.cos(p.angle) * range;
+            p.targetY = p.y + Math.sin(p.angle) * range;
+            reboteado = true;
+          }
+        }
       }
-      // Colisión con muros de piedra (óvalo)
+      // Rebote en muros con colision:true
       const muros = murosPorSala[sala.id] || [];
       for (const muro of muros) {
+        const mejoraMuro = MEJORAS.find(m => m.id === muro.id);
+        if (!mejoraMuro || !mejoraMuro.colision) continue;
         const cos = Math.cos(-muro.angle);
         const sin = Math.sin(-muro.angle);
         const relX = p.x - muro.x;
@@ -907,24 +938,38 @@ setInterval(() => {
         const localY = relX * sin + relY * cos;
         const rx = muro.width + (p.radius || 16);
         const ry = muro.height + (p.radius || 16);
-        if ((localX * localX) / (rx * rx) + (localY * localY) / (ry * ry) <= 1) {
-          // Colisiona con muro
+        if (reboteStacks > 0 && p.rebotes < reboteStacks && ((localX * localX) / (rx * rx) + (localY * localY) / (ry * ry) <= 1)) {
+          // Rebote en muro
+          // Calcular normal del muro
+          const normalAngle = muro.angle;
+          p.angle = 2 * normalAngle - p.angle;
+          p.rebotes = (p.rebotes || 0) + 1;
+          p.lifetime = 0;
+          // Recalcular destino y rango
+          const mejora = MEJORAS.find(m => m.id === p.mejoraId);
+          const range = mejora?.maxRange || 200;
+          p.targetX = p.x + Math.cos(p.angle) * range;
+          p.targetY = p.y + Math.sin(p.angle) * range;
+          reboteado = true;
+          break;
+        } else if ((localX * localX) / (rx * rx) + (localY * localY) / (ry * ry) <= 1) {
+          // Colisión normal (sin rebote)
           const mejora = MEJORAS.find(m => m.id === p.mejoraId);
           if (p.mejoraId === 'meteoro') {
-            // Meteoro explota en el muro, solo una vez
             p.hasHit = true;
             handleExplosion(sala, p, io);
           }
-          // Cuchilla oscura (cuchilla_fria) se destruye sin generar menores
           if (p.mejoraId === 'cuchilla_fria') {
-            // No generar proyectiles menores
             destroy = true;
             break;
           }
-          // Otros proyectiles: solo se destruyen
           destroy = true;
           break;
         }
+      }
+      // Si supera los rebotes permitidos, destruir si sale del mapa
+      if (!reboteado && (p.x < 0 || p.x > 2500 || p.y < 0 || p.y > 1500)) {
+        destroy = true;
       }
       // Si es skill shot, destruir al llegar a destino
       if (!destroy && p.skillShot && typeof p.targetX === 'number' && typeof p.targetY === 'number') {

@@ -98,6 +98,16 @@ const MEJORAS = [
     elemento: 'hielo',
     descripcion: 'Proyectil menor generado por Cuchilla fria. Daño: 12, Velocidad: 13, Radio: 10, Rango: 200. Relentiza un 35% por 1.5 segundos.'
   },
+    // Nuevo aumento: Rebote
+    {
+      id: 'rebote',
+      nombre: 'Rebote',
+      color: '#FFD700', // dorado
+    aumento: true,
+  aplicaA: 'proyectil', // Solo mejoras con proyectil: true
+      stack: true,
+      descripcion: 'Los proyectiles pueden rebotar en muros exteriores y de piedra. Cada stack permite 1 rebote adicional. Al rebotar, el rango máximo se reinicia.'
+    },
   {
     id: 'potenciador_proyectil',
     nombre: 'Potenciador',
