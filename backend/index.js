@@ -393,8 +393,9 @@ io.on('connection', (socket) => {
     const mejora = MEJORAS.find(m => m.id === mejoraId);
     if (!mejora) return;
 
-    // Verificar si ya tiene esta mejora
-    if (!player.mejoras.find(m => m.id === mejoraId)) {
+    // Verificar si ya tiene esta mejora (solo para no stackables)
+    const yaTiene = player.mejoras.find(m => m.id === mejoraId);
+    if (!yaTiene || (mejora.aumento && mejora.stack)) {
       player.mejoras.push(mejora);
       console.log(`Jugador ${player.nick} obtuvo mejora: ${mejora.nombre}`);
     }

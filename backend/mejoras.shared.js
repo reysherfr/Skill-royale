@@ -102,6 +102,7 @@ const MEJORAS = [
     id: 'potenciador_proyectil',
     nombre: 'Potenciador',
     aumento: true,
+    stack: true,
     aplicaA: 'proyectil',
     descripcion: 'Aumenta la velocidad del proyectil en +8 y el rango de distancia en 150.',
     efecto: {
