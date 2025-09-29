@@ -1,3 +1,136 @@
+// HUD de aumentos para ronda 2
+function mostrarHUDAumentosRonda2() {
+  // Oculta el HUD antiguo si existe
+  const hudAntiguo = document.getElementById('hudAumentosRonda2');
+  if (hudAntiguo) hudAntiguo.remove();
+  hudVisible = true;
+  const hud = document.createElement('div');
+  hud.id = 'hudAumentosRonda2';
+  hud.style.position = 'fixed';
+  hud.style.top = '50%';
+  hud.style.left = '50%';
+  hud.style.transform = 'translate(-50%, -50%)';
+  hud.style.background = 'rgba(255,255,255,0.98)';
+  hud.style.padding = '32px 40px';
+  hud.style.borderRadius = '28px';
+  hud.style.boxShadow = '0 8px 32px rgba(0,0,0,0.25)';
+  hud.style.zIndex = '1000';
+  hud.style.textAlign = 'center';
+  hud.style.width = '500px';
+  hud.style.maxWidth = '95vw';
+  hud.style.maxHeight = '80vh';
+  hud.style.overflowY = 'auto';
+  hud.style.border = '2px solid #222';
+
+  // Título
+  const title = document.createElement('h2');
+  title.textContent = 'Elige un aumento para potenciar tus habilidades';
+  title.style.marginBottom = '24px';
+  title.style.fontSize = '1.7rem';
+  title.style.fontWeight = 'bold';
+  title.style.color = '#222';
+  hud.appendChild(title);
+
+  // Filtrar aumentos disponibles
+  const aumentos = MEJORAS.filter(m => m.aumento);
+  const grid = document.createElement('div');
+  grid.style.display = 'flex';
+  grid.style.justifyContent = 'center';
+  grid.style.gap = '18px';
+  grid.style.flexWrap = 'wrap';
+
+  aumentos.forEach(aum => {
+    const btn = document.createElement('button');
+    btn.textContent = aum.nombre;
+    btn.style.padding = '14px 28px';
+    btn.style.borderRadius = '16px';
+    btn.style.border = '2.5px solid #2e7d32';
+    btn.style.background = 'linear-gradient(90deg, #f5f5f5 70%, #e3e3e3 100%)';
+    btn.style.cursor = 'pointer';
+    btn.style.fontWeight = 'bold';
+    btn.style.fontSize = '1.1rem';
+    btn.style.color = '#2e7d32';
+    btn.style.boxShadow = '0 2px 12px #2e7d3233';
+    btn.style.pointerEvents = 'auto';
+    btn.onmouseenter = (e) => {
+      btn.style.background = 'linear-gradient(90deg, #2e7d3222 0%, #f5f5f5 100%)';
+      btn.style.transform = 'scale(1.07)';
+      let tooltip = document.createElement('div');
+      tooltip.className = 'aumento-tooltip';
+      tooltip.textContent = aum.descripcion || '';
+      tooltip.style.position = 'fixed';
+      tooltip.style.left = (e.clientX + 18) + 'px';
+      tooltip.style.top = (e.clientY - 12) + 'px';
+      tooltip.style.background = '#222';
+      tooltip.style.color = '#fff';
+      tooltip.style.padding = '12px 18px';
+      tooltip.style.borderRadius = '12px';
+      tooltip.style.fontSize = '1rem';
+      tooltip.style.zIndex = '2000';
+      tooltip.style.boxShadow = '0 2px 12px #0006';
+      tooltip.style.maxWidth = '340px';
+      tooltip.style.pointerEvents = 'none';
+      document.body.appendChild(tooltip);
+      btn._tooltip = tooltip;
+    };
+    btn.onmouseleave = () => {
+      btn.style.background = 'linear-gradient(90deg, #f5f5f5 70%, #e3e3e3 100%)';
+      btn.style.transform = 'scale(1)';
+      if (btn._tooltip) {
+        btn._tooltip.remove();
+        btn._tooltip = null;
+      }
+    };
+    btn.onclick = () => {
+      Array.from(grid.children).forEach(child => {
+        if (child !== btn) {
+          child.style.display = 'none';
+        } else {
+          child.style.background = 'linear-gradient(90deg, #2e7d3244 0%, #b3e5fc 100%)';
+          child.style.color = '#222';
+          child.style.transform = 'scale(1.12)';
+        }
+      });
+      socket.emit('selectUpgrade', { roomId, mejoraId: aum.id });
+      ocultarHUDAumentosRonda2();
+    };
+    grid.appendChild(btn);
+  });
+  hud.appendChild(grid);
+
+  // Temporizador de 5 segundos
+  const timerDiv = document.createElement('div');
+  timerDiv.style.marginTop = '32px';
+  timerDiv.style.fontSize = '1.3rem';
+  timerDiv.style.fontWeight = 'bold';
+  timerDiv.style.color = '#2e7d32';
+  timerDiv.textContent = 'Tiempo restante: 5s';
+  hud.appendChild(timerDiv);
+
+  let timeLeft = 5;
+  const timerInterval = setInterval(() => {
+    timeLeft--;
+    timerDiv.textContent = `Tiempo restante: ${timeLeft}s`;
+    if (timeLeft <= 0) {
+      clearInterval(timerInterval);
+      // Si no se seleccionó, elegir uno aleatorio
+      if (aumentos.length > 0) {
+        const randomAumento = aumentos[Math.floor(Math.random() * aumentos.length)];
+        socket.emit('selectUpgrade', { roomId, mejoraId: randomAumento.id });
+      }
+      ocultarHUDAumentosRonda2();
+    }
+  }, 1000);
+
+  document.body.appendChild(hud);
+}
+
+function ocultarHUDAumentosRonda2() {
+  hudVisible = false;
+  document.querySelectorAll('.aumento-tooltip').forEach(t => t.remove());
+  const hud = document.getElementById('hudAumentosRonda2');
+  if (hud) hud.remove();
+}
 // Determine server URL based on environment
 // Usar IP pública del servidor en producción
 const SERVER_URL = window.location.hostname === 'localhost' ? 'http://localhost:3000' : 'http://138.68.250.124:3000';
@@ -64,7 +197,7 @@ socket.on('playersUpdate', (serverPlayers) => {
     if (sp.nick === user.nick) {
       mejorasJugador = sp.mejoras || [];
       // Separar mejoras normales de mejoras Q
-      const mejorasNormales = mejorasJugador.filter(m => !m.proyectilQ && !m.proyectilE && !m.proyectilEspacio);
+      const mejorasNormales = mejorasJugador.filter(m => !m.proyectilQ && !m.proyectilE && !m.proyectilEspacio && !m.aumento);
       const mejorasQ = mejorasJugador.filter(m => m.proyectilQ);
 
       // Actualizar mejoraSeleccionada a la última mejora normal
@@ -112,6 +245,10 @@ socket.on('gameStarted', (updatedSala) => {
   // Mostrar HUD de selección de mejoras en ronda 1
   if (sala.round === 1) {
     mostrarHUDSeleccionHabilidades();
+  }
+  // Mostrar HUD de aumentos en ronda 2
+  if (sala.round === 2) {
+    mostrarHUDAumentosRonda2();
   }
 });
 let proyectiles = new Map();
@@ -322,6 +459,15 @@ function handleMouseDown(e) {
   const dy = mouseY - localPlayer.y;
   const angle = Math.atan2(dy, dx);
 
+  // Aplicar potenciador si tiene y es proyectil
+  let velocidadFinal = mejoraSeleccionada.velocidad;
+  let maxRangeFinal = mejoraSeleccionada.maxRange;
+  const tienePotenciador = mejorasJugador.some(m => m.id === 'potenciador_proyectil');
+  if (tienePotenciador && mejoraSeleccionada.proyectil) {
+    velocidadFinal += 8;
+    maxRangeFinal += 150;
+  }
+
   // Emitir evento al backend para crear el proyectil
   socket.emit('shootProjectile', {
     roomId,
@@ -329,7 +475,8 @@ function handleMouseDown(e) {
     y: localPlayer.y,
     angle,
     mejoraId: mejoraSeleccionada.id,
-    velocidad: mejoraSeleccionada.velocidad,
+    velocidad: velocidadFinal,
+    maxRange: maxRangeFinal,
     owner: localPlayer.nick
   });
 }
@@ -1589,7 +1736,8 @@ socket.on('proyectilesUpdate', (proys) => {
         angle: pData.angle,
         mejora,
         owner: pData.owner,
-        id: pData.id
+        id: pData.id,
+        velocidad: pData.velocidad
       });
       proyectiles.set(pData.id, newP);
     }
@@ -1930,7 +2078,7 @@ socket.on('playerUpgraded', (data) => {
     if (data.nick === user.nick) {
       mejorasJugador = data.mejoras;
       // Separar mejoras normales de mejoras Q
-      const mejorasNormales = mejorasJugador.filter(m => !m.proyectilQ && !m.proyectilE && !m.proyectilEspacio);
+      const mejorasNormales = mejorasJugador.filter(m => !m.proyectilQ && !m.proyectilE && !m.proyectilEspacio && !m.aumento);
       const mejorasQ = mejorasJugador.filter(m => m.proyectilQ);
 
       // Actualizar mejoraSeleccionada a la última mejora normal

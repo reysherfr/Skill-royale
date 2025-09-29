@@ -338,10 +338,11 @@ io.on('connection', (socket) => {
         // Emitir fin del cast
         io.to(data.roomId).emit('castEnded', { position: { x: targetX, y: targetY }, player: data.owner });
       }
-    } else if (mejora.maxRange && !skillShot) {
+    } else if ((mejora.maxRange || data.maxRange) && !skillShot) {
       skillShot = true;
-      targetX = data.x + Math.cos(data.angle) * mejora.maxRange;
-      targetY = data.y + Math.sin(data.angle) * mejora.maxRange;
+      const range = data.maxRange || mejora.maxRange;
+      targetX = data.x + Math.cos(data.angle) * range;
+      targetY = data.y + Math.sin(data.angle) * range;
     }
     proyectilesPorSala[data.roomId].push({
       id: ++projectileIdCounter, // Asignar ID único

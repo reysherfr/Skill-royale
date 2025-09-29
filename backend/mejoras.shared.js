@@ -1,7 +1,7 @@
 
 // Clase Proyectil compartida para frontend y backend
 class Proyectil {
-  constructor({ x, y, angle, mejora, owner, id }) {
+  constructor({ x, y, angle, mejora, owner, id, velocidad }) {
     this.id = id;
     this.x = x;
     this.y = y;
@@ -11,8 +11,9 @@ class Proyectil {
     this.mejora = mejora; // objeto de MEJORAS
     this.owner = owner; // nick del jugador
     this.radius = (mejora && mejora.radius) ? mejora.radius : 16;
-    this.vx = Math.cos(angle) * mejora.velocidad;
-    this.vy = Math.sin(angle) * mejora.velocidad;
+    const vel = velocidad || mejora.velocidad;
+    this.vx = Math.cos(angle) * vel;
+    this.vy = Math.sin(angle) * vel;
     this.activo = true;
     // Tiempo de vida máximo según tipo
     if (mejora.maxLifetime) {
@@ -98,6 +99,17 @@ const MEJORAS = [
     descripcion: 'Proyectil menor generado por Cuchilla fria. Daño: 12, Velocidad: 13, Radio: 10, Rango: 200. Relentiza un 35% por 1.5 segundos.'
   },
   {
+    id: 'potenciador_proyectil',
+    nombre: 'Potenciador',
+    aumento: true,
+    aplicaA: 'proyectil',
+    descripcion: 'Aumenta la velocidad del proyectil en +8 y el rango de distancia en 150.',
+    efecto: {
+      velocidad: 8,
+      maxRange: 150
+    }
+  },
+  {
     id: 'fuego',
     nombre: 'Bola de Fuego',
     color: 'orange',
@@ -105,12 +117,12 @@ const MEJORAS = [
     danio: 20,
     cooldown: 1400, // ms
     effect: { type: 'dot', damage: 2, duration: 3000 },
-    maxRange: 720,
+    maxRange: 820,
     proyectil: true,
     radius: 16,
     activacionRapida: false, // Requiere apuntar
     elemento: 'fuego',
-    descripcion: 'Daño: 20, Velocidad: 10, Bola de Fuego (radio 16) Rango: 720. +2 de daño por segundo durante 2 segundos.'
+    descripcion: 'Daño: 20, Velocidad: 10, Bola de Fuego (radio 16) Rango: 820. +2 de daño por segundo durante 2 segundos.'
   },
   {
     id: 'hielo',

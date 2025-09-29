@@ -1,7 +1,7 @@
 
 // Clase Proyectil compartida para frontend y backend
 class Proyectil {
-  constructor({ x, y, angle, mejora, owner, id }) {
+  constructor({ x, y, angle, mejora, owner, id, velocidad }) {
     this.id = id;
     this.x = x;
     this.y = y;
@@ -11,8 +11,9 @@ class Proyectil {
     this.mejora = mejora; // objeto de MEJORAS
     this.owner = owner; // nick del jugador
     this.radius = (mejora && mejora.radius) ? mejora.radius : 16;
-    this.vx = Math.cos(angle) * mejora.velocidad;
-    this.vy = Math.sin(angle) * mejora.velocidad;
+    const vel = velocidad || mejora.velocidad;
+    this.vx = Math.cos(angle) * vel;
+    this.vy = Math.sin(angle) * vel;
     this.activo = true;
     // Tiempo de vida máximo según tipo
     if (mejora.maxLifetime) {
@@ -82,6 +83,17 @@ class Proyectil {
 // Archivo compartido para mejoras entre backend y frontend
 
 const MEJORAS = [
+  {
+    id: 'potenciador_proyectil',
+    nombre: 'Potenciador',
+    aumento: true,
+    aplicaA: 'proyectil',
+    descripcion: 'Aumenta la velocidad del proyectil en +8 y el rango de distancia en 150.',
+    efecto: {
+      velocidad: 8,
+      maxRange: 150
+    }
+  },
   {
     id: 'cuchilla_fria_menor',
     nombre: 'Cuchilla fria menor',
