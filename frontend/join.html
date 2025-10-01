@@ -3,23 +3,45 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>BatlesD - Unirse a Sala</title>
-  <link href="https://fonts.googleapis.com/css2?family=Roboto:wght@500&display=swap" rel="stylesheet">
+  <title>Skill Clash - Unirse a Sala</title>
+  <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@400;500;600;700;800&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="styles.css">
 </head>
 <body>
-  <div class="container">
-    <h1>Salas Disponibles</h1>
-    <div class="form-box" id="roomsBox" style="margin-bottom:24px;">
-      <h2>Lista de Salas</h2>
-      <div id="roomsList">
-        <div style="color:#b0c4de;">No hay salas disponibles.</div>
+  <!-- Partículas animadas de fondo -->
+  <div class="particles-background">
+    <div class="particle"></div>
+    <div class="particle"></div>
+    <div class="particle"></div>
+    <div class="particle"></div>
+    <div class="particle"></div>
+    <div class="particle"></div>
+    <div class="particle"></div>
+    <div class="particle"></div>
+  </div>
+
+  <!-- Contenedor principal de salas disponibles -->
+  <div class="join-container">
+    <!-- Header -->
+    <div class="join-header">
+      <div class="join-title-section">
+        <h1 class="join-title">🎯 Salas Disponibles</h1>
+        <p class="join-subtitle">Encuentra una partida y únete a la batalla</p>
+      </div>
+      <button id="exitBtn" class="exit-btn">
+        <span class="exit-icon">←</span> Salir
+      </button>
+    </div>
+
+    <!-- Lista de salas -->
+    <div class="rooms-list" id="roomsList">
+      <div class="loading-message">
+        <div class="loading-spinner"></div>
+        <p>Buscando salas disponibles...</p>
       </div>
     </div>
-    <div class="form-box" style="text-align:center;">
-      <button id="exitBtn" style="background:#d32f2f;">Salir</button>
-    </div>
   </div>
+
   <script src="https://cdn.socket.io/4.7.2/socket.io.min.js"></script>
   <script src="join.js"></script>
 </body>

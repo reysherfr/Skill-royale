@@ -3,26 +3,116 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>BatlesD - Menú Principal</title>
-  <link href="https://fonts.googleapis.com/css2?family=Roboto:wght@300;500;600;700&display=swap" rel="stylesheet">
+  <title>Skill Clash - Menú Principal</title>
+  <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="styles.css">
 </head>
 <body>
-  <div class="container">
-    <h1>Skill Clash</h1>
-    <p class="subtitle">¡Arma tu mejor combo!</p>
+  <!-- Fondo animado con partículas -->
+  <div class="particles-background">
+    <div class="particle"></div>
+    <div class="particle"></div>
+    <div class="particle"></div>
+    <div class="particle"></div>
+    <div class="particle"></div>
+    <div class="particle"></div>
+    <div class="particle"></div>
+    <div class="particle"></div>
+  </div>
 
-    <div class="welcome-section">
-      <div id="welcomeMsg" class="welcome-text"></div>
+  <div class="menu-container">
+    <!-- Header del menú con logo -->
+    <div class="menu-header">
+      <div class="menu-logo">
+        <img src="ranks/37.png" alt="Skill Clash Logo">
+      </div>
+      <h1 class="menu-title">Skill Clash</h1>
+      <p class="menu-subtitle">¡Arma tu mejor combo!</p>
     </div>
 
-    <div class="form-box">
-      <div class="menu-buttons">
-        <button id="statsBtn" class="menu-button stats">📊 Stats</button>
-        <button id="hostBtn" class="menu-button host">🎯 Host Match</button>
-        <button id="joinBtn" class="menu-button join">🔗 Join Match</button>
-        <button id="logoutBtn" class="menu-button logout">🚪 Logout</button>
+    <!-- Tarjeta de perfil del jugador -->
+    <div class="player-card">
+      <div class="player-info">
+        <div class="player-rank-img" id="playerRankImg"></div>
+        <div class="player-details">
+          <div class="player-name" id="playerName">Cargando...</div>
+          <div class="player-stats-mini">
+            <div class="stat-mini">
+              <span class="stat-icon">⚡</span>
+              <span class="stat-value" id="playerExp">0</span>
+              <span class="stat-label">EXP</span>
+            </div>
+            <div class="stat-mini">
+              <span class="stat-icon">🏆</span>
+              <span class="stat-value" id="playerVictories">0</span>
+              <span class="stat-label">Victorias</span>
+            </div>
+          </div>
+        </div>
       </div>
+    </div>
+
+    <!-- Botones del menú principal -->
+    <div class="menu-actions">
+      <button id="statsBtn" class="action-btn stats-btn">
+        <div class="btn-icon">
+          <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <line x1="18" y1="20" x2="18" y2="10"></line>
+            <line x1="12" y1="20" x2="12" y2="4"></line>
+            <line x1="6" y1="20" x2="6" y2="14"></line>
+          </svg>
+        </div>
+        <div class="btn-content">
+          <span class="btn-title">ESTADÍSTICAS</span>
+          <span class="btn-subtitle">Ver tu progreso</span>
+        </div>
+        <div class="btn-arrow">→</div>
+      </button>
+
+      <button id="hostBtn" class="action-btn host-btn">
+        <div class="btn-icon">
+          <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <circle cx="12" cy="12" r="10"></circle>
+            <line x1="12" y1="8" x2="12" y2="16"></line>
+            <line x1="8" y1="12" x2="16" y2="12"></line>
+          </svg>
+        </div>
+        <div class="btn-content">
+          <span class="btn-title">CREAR PARTIDA</span>
+          <span class="btn-subtitle">Sé el anfitrión</span>
+        </div>
+        <div class="btn-arrow">→</div>
+      </button>
+
+      <button id="joinBtn" class="action-btn join-btn">
+        <div class="btn-icon">
+          <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M16 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"></path>
+            <circle cx="8.5" cy="7" r="4"></circle>
+            <polyline points="17 11 19 13 23 9"></polyline>
+          </svg>
+        </div>
+        <div class="btn-content">
+          <span class="btn-title">UNIRSE A PARTIDA</span>
+          <span class="btn-subtitle">Encuentra una sala</span>
+        </div>
+        <div class="btn-arrow">→</div>
+      </button>
+
+      <button id="logoutBtn" class="action-btn logout-btn">
+        <div class="btn-icon">
+          <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"></path>
+            <polyline points="16 17 21 12 16 7"></polyline>
+            <line x1="21" y1="12" x2="9" y2="12"></line>
+          </svg>
+        </div>
+        <div class="btn-content">
+          <span class="btn-title">CERRAR SESIÓN</span>
+          <span class="btn-subtitle">Salir del juego</span>
+        </div>
+        <div class="btn-arrow">→</div>
+      </button>
     </div>
   </div>
 

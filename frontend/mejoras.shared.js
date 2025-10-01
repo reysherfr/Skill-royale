@@ -101,7 +101,7 @@ const MEJORAS = [
     aumento: true,
     stack: true,
     aplicaA: ['proyectil', 'proyectilQ'],
-    descripcion: 'Aumenta el radio del proyectil en +10.',
+    descripcion: 'Aumenta el radio del proyectil y la Q en +10.',
     efecto: {
       radius: 10
     }
@@ -131,6 +131,47 @@ const MEJORAS = [
       stack: true,
       descripcion: 'Los proyectiles pueden rebotar en muros exteriores y de piedra. Cada stack permite 1 rebote adicional. Al rebotar, el rango máximo se reinicia.'
     },
+        // Nuevo aumento: Daño escudo
+    {
+      id: 'dano_escudo',
+      nombre: 'Daño escudo',
+      aumento: true,
+      stack: false,
+      aplicaA: 'escudo',
+      descripcion: 'Si tienes un escudo aumenta la duracion del escudo en 1+ segundo y aumenta el escudo recibido en +15, y si recibe daño tu escudo, el rival recibe el 20% del daño que recibe el escudo.',
+      efecto: {
+        duracion: 1000,
+        shieldAmount: 15,
+        damageReflection: 0.2
+      }
+    },
+      // Nuevo aumento: Dividor
+      {
+        id: 'dividor',
+        nombre: 'Dividor',
+        aumento: true,
+        stack: true,
+        aplicaA: 'proyectil',
+        descripcion: 'Por cada stack, disparas un proyectil adicional en ángulos cercanos al original. Reduce el daño de proyectiles en 3 por stack.',
+        efecto: {
+          separationAngle: 18, // grados de separación entre cada proyectil
+          damageReductionFlat: 3 // reduce daño en 3 por stack
+        }
+      },
+        // Nuevo aumento: Explosion de sabor
+        {
+          id: 'explosion_sabor',
+          nombre: 'Explosión de sabor',
+          aumento: true,
+          stack: true,
+          aplicaA: ['proyectil', 'proyectilQ'],
+          descripcion: 'Tus proyectiles al final de su rango o al impactar generan una explosión de daño en área (+40 de radio por stack). Las habilidades con daño en área (ej: Meteoro, Roca fangosa) aumentan su radio de explosión. Reduce el daño de proyectiles y proyectilesQ en un 20%.',
+          efecto: {
+            explosionRadiusBonus: 40, // radio extra por stack
+            damageReduction: 0.2 // reduce daño de proyectiles en 20%
+          }
+        },
+    
   {
     id: 'fuego',
     nombre: 'Bola de Fuego',
@@ -248,7 +289,7 @@ MEJORAS.push({
   castTime: 700, // 0.7 segundos
   activacionRapida: false, // Requiere apuntar
   elemento: 'roca',
-  descripcion: 'Daño: 65, CD: 6s, Radio: 105, Rango: 680, castTime: 0.7s. roca que cae del cielo tras 0.7s en el área objetivo, generando un área de lodo que ralentiza a los enemigos un 50% durante 2s.',
+  descripcion: 'Daño: 65, CD: 6s, Radio: 105, Rango: 680, castTime: 0.7s. roca que cae del cielo tras 0.7s en el área objetivo, generando un área de lodo que ralentiza a los enemigos un 40% durante 3s.',
 });
 
 // Exportación ES Module para frontend y backend
@@ -300,13 +341,13 @@ MEJORAS.push({
   color: '#87CEEB', // skyblue
   velocidad: 0, // No se mueve
   danio: 0, // No hace daño
-  cooldown: 5500, // 5.5 segundos
+  cooldown: 7500, // 7.5 segundos
   proyectilE: true,
   shieldAmount: 35, // Daño que absorbe
   duracion: 2000, // 2 segundos
   activacionRapida: true, // Fastcast
   elemento: 'escudo',
-  descripcion: 'Crea un escudo mágico que absorbe 35 de daño durante 2 segundos. CD: 5.5s. Se activa instantáneamente al presionar E.'
+  descripcion: 'Crea un escudo mágico que absorbe 35 de daño durante 2 segundos. CD: 7.5s. Se activa instantáneamente al presionar E.'
 });
 // Nueva habilidad: Teleport
 MEJORAS.push({

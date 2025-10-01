@@ -20,23 +20,63 @@ socket.on('roomsUpdated', () => {
 
 async function cargarSalas() {
   try {
-  const res = await fetch(`${SERVER_URL}/rooms`);
+    const res = await fetch(`${SERVER_URL}/rooms`);
     const data = await res.json();
+    
     if (data.success && data.salas.length > 0) {
       roomsList.innerHTML = '';
+      
       data.salas.forEach(sala => {
-        roomsList.innerHTML += `<div style="margin-bottom:10px; padding:8px; border-radius:8px; background:#f0f4fa; display:flex; align-items:center; justify-content:space-between;">
-          <div>
-            <strong>${sala.host.nick}</strong> <span style="color:#2a5298;">(Host)</span><br>
-            <span style="color:#555;">Jugadores: ${sala.players.length}/4</span>
+        const roomCard = document.createElement('div');
+        roomCard.className = 'room-item-card';
+        
+        roomCard.innerHTML = `
+          <div class="room-item-header">
+            <div class="room-host-info">
+              <div class="room-host-avatar">
+                <img src="ranks/${sala.host.nivel || 1}.png" alt="Rank ${sala.host.nivel || 1}">
+              </div>
+              <div class="room-host-details">
+                <div class="room-host-name">${sala.host.nick}</div>
+                <div class="room-host-badge">👑 Anfitrión</div>
+              </div>
+            </div>
+            <div class="room-players-count">
+              <span class="players-icon">👥</span>
+              <span class="players-number">${sala.players.length}/4</span>
+            </div>
           </div>
-          <button class="joinRoomBtn" data-roomid="${sala.id}" style="background:#2a5298; color:#fff; border:none; border-radius:8px; padding:8px 16px; cursor:pointer;">Join</button>
-        </div>`;
+          
+          <div class="room-item-players">
+            ${sala.players.map((player, index) => `
+              <div class="room-mini-player">
+                <img src="ranks/${player.nivel || 1}.png" alt="Player ${index + 1}">
+              </div>
+            `).join('')}
+            ${Array(4 - sala.players.length).fill(0).map(() => `
+              <div class="room-mini-player empty">
+                <span>?</span>
+              </div>
+            `).join('')}
+          </div>
+          
+          <button class="join-room-btn" data-roomid="${sala.id}">
+            <span class="btn-icon">⚔️</span>
+            <span>Unirse a la Batalla</span>
+            <span class="btn-arrow">→</span>
+          </button>
+        `;
+        
+        roomsList.appendChild(roomCard);
       });
+      
       // Agregar eventos a los botones Join
-      document.querySelectorAll('.joinRoomBtn').forEach(btn => {
+      document.querySelectorAll('.join-room-btn').forEach(btn => {
         btn.addEventListener('click', async function() {
           const roomId = this.dataset.roomid;
+          this.innerHTML = '<span class="btn-loading">Uniéndose...</span>';
+          this.disabled = true;
+          
           try {
             const res = await fetch(`${SERVER_URL}/join-room`, {
               method: 'POST',
@@ -49,17 +89,39 @@ async function cargarSalas() {
               window.location.href = 'room.html';
             } else {
               alert(data.error || 'No se pudo unir a la sala.');
+              this.disabled = false;
+              this.innerHTML = '<span class="btn-icon">⚔️</span><span>Unirse a la Batalla</span><span class="btn-arrow">→</span>';
             }
           } catch (err) {
             alert('Error al conectar al servidor.');
+            this.disabled = false;
+            this.innerHTML = '<span class="btn-icon">⚔️</span><span>Unirse a la Batalla</span><span class="btn-arrow">→</span>';
           }
         });
       });
     } else {
-      roomsList.innerHTML = '<div style="color:#b0c4de;">No hay salas disponibles.</div>';
+      roomsList.innerHTML = `
+        <div class="empty-state">
+          <div class="empty-icon">🎮</div>
+          <h3>No hay salas disponibles</h3>
+          <p>¡Sé el primero en crear una sala!</p>
+          <button onclick="window.location.href='menu.html'" class="create-room-btn">
+            Crear Sala
+          </button>
+        </div>
+      `;
     }
   } catch (err) {
-    roomsList.innerHTML = '<div style="color:#d32f2f;">Error al conectar al servidor.</div>';
+    roomsList.innerHTML = `
+      <div class="error-state">
+        <div class="error-icon">⚠️</div>
+        <h3>Error de conexión</h3>
+        <p>No se pudo conectar al servidor</p>
+        <button onclick="cargarSalas()" class="retry-btn">
+          🔄 Reintentar
+        </button>
+      </div>
+    `;
   }
 }
 

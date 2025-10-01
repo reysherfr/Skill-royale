@@ -10,7 +10,7 @@ export class Player {
     this.y = y;
     this.color = color;
     this.isLocal = isLocal;
-    this.health = 100;
+    this.health = 200;
     this.speed = speed;
     this.mejoras = mejoras;
   }

@@ -4,32 +4,62 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>BatlesD - Sala</title>
-  <link href="https://fonts.googleapis.com/css2?family=Roboto:wght@500&display=swap" rel="stylesheet">
+  <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@400;500;600;700;800&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="styles.css">
 </head>
 <body>
-  <div class="container">
-    <h1>Sala</h1>
-    <div id="roomInfo" style="margin-bottom:24px; text-align:center;"></div>
-    <div class="form-box" id="playersBox" style="margin-bottom:24px;">
-      <h2>Jugadores en la sala</h2>
-      <div id="playersList"></div>
+  <!-- Partículas animadas de fondo -->
+  <div class="particles-background">
+    <div class="particle"></div>
+    <div class="particle"></div>
+    <div class="particle"></div>
+    <div class="particle"></div>
+    <div class="particle"></div>
+    <div class="particle"></div>
+    <div class="particle"></div>
+    <div class="particle"></div>
+  </div>
+
+  <!-- Contenedor principal de la sala -->
+  <div class="room-container">
+    <!-- Header de la sala -->
+    <div class="room-header">
+      <div class="room-title-section">
+        <h1 class="room-title">🎮 Sala de Batalla</h1>
+        <div id="roomInfo" class="room-info"></div>
+      </div>
+      <button id="exitBtn" class="exit-btn">
+        <span class="exit-icon">←</span> Salir
+      </button>
     </div>
-    <div class="form-box" style="text-align:center;">
-      <button id="startBtn" style="display:none;">Iniciar</button>
-      <button id="exitBtn" style="background:#d32f2f;">Salir</button>
+
+    <!-- Grid de jugadores -->
+    <div class="room-players-grid" id="playersGrid">
+      <!-- Los jugadores se renderizan dinámicamente aquí -->
     </div>
-    <div id="upgradePanel" style="display:none; position:absolute; top:10px; right:10px; background:#fff; padding:10px; border:1px solid #000;">
-      <h3>Upgrades</h3>
-      <p>Time: <span id="timeDisplay">0:00</span></p>
-      <p>Gold: <span id="goldDisplay">0</span></p>
-      <button id="upgradeHealth">+20 Health (50 gold)</button><br>
-      <button id="upgradeDamage">+5 Damage (50 gold)</button><br>
-      <button id="upgradeSpeed">+1 Speed (50 gold)</button>
+
+    <!-- Botón de iniciar partida -->
+    <div class="action-section">
+      <button id="startBtn" class="start-btn" style="display:none;">
+        <span class="btn-shine"></span>
+        ⚔️ Iniciar Batalla
+      </button>
     </div>
   </div>
+
+  <!-- Panel de upgrades (oculto por defecto) -->
+  <div id="upgradePanel" style="display:none; position:absolute; top:10px; right:10px; background:#fff; padding:10px; border:1px solid #000;">
+    <h3>Upgrades</h3>
+    <p>Time: <span id="timeDisplay">0:00</span></p>
+    <p>Gold: <span id="goldDisplay">0</span></p>
+    <button id="upgradeHealth">+20 Health (50 gold)</button><br>
+    <button id="upgradeDamage">+5 Damage (50 gold)</button><br>
+    <button id="upgradeSpeed">+1 Speed (50 gold)</button>
+  </div>
+
   <canvas id="gameCanvas" style="display:none; width:100vw; height:100vh;"></canvas>
   <script src="https://cdn.socket.io/4.7.2/socket.io.min.js"></script>
+  <script src="procedura.js"></script>
   <script type="module" src="room.js"></script>
 </body>
 </html>

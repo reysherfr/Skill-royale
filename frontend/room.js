@@ -10,113 +10,327 @@ function mostrarHUDAumentosRonda2() {
   const hudAntiguo = document.getElementById('hudAumentosRonda2');
   if (hudAntiguo) hudAntiguo.remove();
   hudVisible = true;
+
+  // Overlay oscuro de fondo
+  const overlay = document.createElement('div');
+  overlay.id = 'aumentosOverlay';
+  overlay.style.position = 'fixed';
+  overlay.style.top = '0';
+  overlay.style.left = '0';
+  overlay.style.width = '100%';
+  overlay.style.height = '100%';
+  overlay.style.background = 'radial-gradient(circle at center, rgba(46, 125, 50, 0.15) 0%, rgba(0,0,0,0.85) 100%)';
+  overlay.style.zIndex = '999';
+  overlay.style.animation = 'fadeIn 0.4s ease-out';
+  overlay.style.backdropFilter = 'blur(8px)';
+  document.body.appendChild(overlay);
+
   const hud = document.createElement('div');
   hud.id = 'hudAumentosRonda2';
   hud.style.position = 'fixed';
   hud.style.top = '50%';
   hud.style.left = '50%';
-  hud.style.transform = 'translate(-50%, -50%)';
-  hud.style.background = 'rgba(255,255,255,0.98)';
-  hud.style.padding = '32px 40px';
+  hud.style.transform = 'translate(-50%, -50%) scale(0.9)';
+  hud.style.background = 'linear-gradient(135deg, #1b5e20 0%, #2e7d32 50%, #388e3c 100%)';
+  hud.style.padding = '40px 48px';
   hud.style.borderRadius = '28px';
-  hud.style.boxShadow = '0 8px 32px rgba(0,0,0,0.25)';
+  hud.style.boxShadow = '0 25px 90px rgba(0,0,0,0.7), 0 0 0 1px rgba(255,255,255,0.15), inset 0 2px 0 rgba(255,255,255,0.15)';
   hud.style.zIndex = '1000';
   hud.style.textAlign = 'center';
-  hud.style.width = '500px';
-  hud.style.maxWidth = '95vw';
-  hud.style.maxHeight = '80vh';
-  hud.style.overflowY = 'auto';
-  hud.style.border = '2px solid #222';
+  hud.style.width = 'auto';
+  hud.style.maxWidth = '90vw';
+  hud.style.maxHeight = '90vh';
+  hud.style.animation = 'slideInScale 0.6s cubic-bezier(0.34, 1.56, 0.64, 1) forwards';
+  hud.style.backdropFilter = 'blur(10px)';
+  hud.style.border = '2px solid rgba(139, 195, 74, 0.4)';
 
-  // Título
+  // Asegurar que las animaciones existen
+  if (!document.getElementById('skillSelectorAnimations')) {
+    const style = document.createElement('style');
+    style.id = 'skillSelectorAnimations';
+    style.textContent = `
+      @keyframes fadeIn {
+        from { opacity: 0; }
+        to { opacity: 1; }
+      }
+      @keyframes slideInScale {
+        from {
+          opacity: 0;
+          transform: translate(-50%, -50%) scale(0.8);
+        }
+        to {
+          opacity: 1;
+          transform: translate(-50%, -50%) scale(1);
+        }
+      }
+      @keyframes pulseGlow {
+        0%, 100% {
+          box-shadow: 0 0 25px rgba(139, 195, 74, 0.5);
+        }
+        50% {
+          box-shadow: 0 0 45px rgba(139, 195, 74, 0.8);
+        }
+      }
+      @keyframes shimmer {
+        0% { background-position: -1000px 0; }
+        100% { background-position: 1000px 0; }
+      }
+      @keyframes bounce {
+        0%, 100% { transform: translateY(0); }
+        50% { transform: translateY(-8px); }
+      }
+    `;
+    document.head.appendChild(style);
+  }
+
+  // Contenedor del título con icono
+  const titleContainer = document.createElement('div');
+  titleContainer.style.marginBottom = '36px';
+  titleContainer.style.position = 'relative';
+
+  // Icono decorativo
+  const icon = document.createElement('div');
+  icon.textContent = '⚡';
+  icon.style.fontSize = '3.5rem';
+  icon.style.marginBottom = '8px';
+  icon.style.filter = 'drop-shadow(0 0 20px rgba(255, 235, 59, 0.8))';
+  icon.style.animation = 'bounce 2s ease-in-out infinite';
+  titleContainer.appendChild(icon);
+
+  // Título principal
   const title = document.createElement('h2');
-  title.textContent = 'Elige un aumento para potenciar tus habilidades';
-  title.style.marginBottom = '24px';
-  title.style.fontSize = '1.7rem';
-  title.style.fontWeight = 'bold';
-  title.style.color = '#222';
-  hud.appendChild(title);
+  title.textContent = '💪 Potencia tus Habilidades 💪';
+  title.style.fontSize = '2.5rem';
+  title.style.fontWeight = '900';
+  title.style.background = 'linear-gradient(90deg, #fff176, #ffeb3b, #fdd835, #ffeb3b, #fff176)';
+  title.style.backgroundSize = '200% auto';
+  title.style.WebkitBackgroundClip = 'text';
+  title.style.WebkitTextFillColor = 'transparent';
+  title.style.backgroundClip = 'text';
+  title.style.animation = 'shimmer 3s linear infinite';
+  title.style.margin = '0 0 8px 0';
+  title.style.textShadow = '0 0 40px rgba(255, 235, 59, 0.6)';
+  titleContainer.appendChild(title);
 
-  // Filtrar aumentos disponibles
-  const aumentos = MEJORAS.filter(m => m.aumento);
+  const subtitle = document.createElement('p');
+  subtitle.textContent = 'Elige un aumento para dominar el campo de batalla';
+  subtitle.style.fontSize = '1.1rem';
+  subtitle.style.color = 'rgba(255,255,255,0.9)';
+  subtitle.style.fontWeight = '600';
+  subtitle.style.letterSpacing = '0.5px';
+  subtitle.style.margin = '0';
+  titleContainer.appendChild(subtitle);
+
+  hud.appendChild(titleContainer);
+
+  // Filtrar aumentos disponibles, excluyendo cualquier aumento con stack:false si ya fue seleccionado
+  const aumentos = MEJORAS.filter(m => {
+    if (m.aumento && m.stack === false) {
+      return !mejorasJugador.some(a => a.id === m.id);
+    }
+    return m.aumento;
+  });
+
   const grid = document.createElement('div');
   grid.style.display = 'flex';
   grid.style.justifyContent = 'center';
-  grid.style.gap = '18px';
+  grid.style.gap = '20px';
   grid.style.flexWrap = 'wrap';
+  grid.style.maxWidth = '800px';
+  grid.style.margin = '0 auto';
 
   let aumentoSeleccionado = null;
-  aumentos.forEach(aum => {
+  aumentos.forEach((aum, idx) => {
+    const btnWrapper = document.createElement('div');
+    btnWrapper.style.position = 'relative';
+    btnWrapper.style.animation = `slideInScale 0.5s cubic-bezier(0.34, 1.56, 0.64, 1) ${idx * 0.1}s backwards`;
+
     const btn = document.createElement('button');
     btn.textContent = aum.nombre;
-    btn.style.padding = '14px 28px';
-    btn.style.borderRadius = '16px';
-    btn.style.border = '2.5px solid #2e7d32';
-    btn.style.background = 'linear-gradient(90deg, #f5f5f5 70%, #e3e3e3 100%)';
+    btn.style.padding = '18px 36px';
+    btn.style.borderRadius = '18px';
+    btn.style.border = '3px solid #8bc34a';
+    btn.style.background = 'linear-gradient(135deg, rgba(255,255,255,0.15) 0%, rgba(255,255,255,0.08) 100%)';
     btn.style.cursor = 'pointer';
-    btn.style.fontWeight = 'bold';
-    btn.style.fontSize = '1.1rem';
-    btn.style.color = '#2e7d32';
-    btn.style.boxShadow = '0 2px 12px #2e7d3233';
+    btn.style.fontWeight = '800';
+    btn.style.fontSize = '1.2rem';
+    btn.style.color = '#fff';
+    btn.style.boxShadow = '0 6px 25px rgba(139, 195, 74, 0.4), inset 0 1px 0 rgba(255,255,255,0.2)';
     btn.style.pointerEvents = 'auto';
+    btn.style.position = 'relative';
+    btn.style.overflow = 'hidden';
+    btn.style.transition = 'all 0.3s cubic-bezier(0.34, 1.56, 0.64, 1)';
+    btn.style.minWidth = '200px';
+    btn.style.textShadow = '0 2px 10px rgba(0,0,0,0.3)';
+
+    // Efecto de brillo
+    const shine = document.createElement('span');
+    shine.style.position = 'absolute';
+    shine.style.top = '0';
+    shine.style.left = '-100%';
+    shine.style.width = '100%';
+    shine.style.height = '100%';
+    shine.style.background = 'linear-gradient(90deg, transparent, rgba(255,255,255,0.4), transparent)';
+    shine.style.transition = 'left 0.6s';
+    shine.style.pointerEvents = 'none';
+    btn.appendChild(shine);
+
+    // Badge de "NUEVO" o "STACK" si aplica
+    if (aum.stack !== false) {
+      const badge = document.createElement('span');
+      badge.textContent = '∞';
+      badge.style.position = 'absolute';
+      badge.style.top = '-8px';
+      badge.style.right = '-8px';
+      badge.style.background = 'linear-gradient(135deg, #ff9800, #f57c00)';
+      badge.style.color = '#fff';
+      badge.style.fontSize = '0.85rem';
+      badge.style.fontWeight = '900';
+      badge.style.padding = '4px 8px';
+      badge.style.borderRadius = '50%';
+      badge.style.boxShadow = '0 3px 12px rgba(255, 152, 0, 0.6)';
+      badge.style.border = '2px solid rgba(255,255,255,0.3)';
+      btnWrapper.appendChild(badge);
+    }
+
     btn.onmouseenter = (e) => {
-      btn.style.background = 'linear-gradient(90deg, #2e7d3222 0%, #f5f5f5 100%)';
-      btn.style.transform = 'scale(1.07)';
+      btn.style.background = 'linear-gradient(135deg, #8bc34a 0%, #689f38 100%)';
+      btn.style.transform = 'translateY(-5px) scale(1.08)';
+      btn.style.boxShadow = '0 12px 40px rgba(139, 195, 74, 0.6), inset 0 2px 0 rgba(255,255,255,0.3)';
+      shine.style.left = '100%';
+
+      // Tooltip mejorado
       let tooltip = document.createElement('div');
       tooltip.className = 'aumento-tooltip';
       tooltip.textContent = aum.descripcion || '';
       tooltip.style.position = 'fixed';
-      tooltip.style.left = (e.clientX + 18) + 'px';
-      tooltip.style.top = (e.clientY - 12) + 'px';
-      tooltip.style.background = '#222';
+      tooltip.style.left = (e.clientX + 20) + 'px';
+      tooltip.style.top = (e.clientY - 15) + 'px';
+      tooltip.style.background = 'linear-gradient(135deg, #1b5e20 0%, #2e7d32 100%)';
       tooltip.style.color = '#fff';
-      tooltip.style.padding = '12px 18px';
-      tooltip.style.borderRadius = '12px';
+      tooltip.style.padding = '16px 22px';
+      tooltip.style.borderRadius = '14px';
       tooltip.style.fontSize = '1rem';
       tooltip.style.zIndex = '2000';
-      tooltip.style.boxShadow = '0 2px 12px #0006';
-      tooltip.style.maxWidth = '340px';
+      tooltip.style.boxShadow = '0 10px 40px rgba(0,0,0,0.6)';
+      tooltip.style.maxWidth = '350px';
       tooltip.style.pointerEvents = 'none';
+      tooltip.style.border = '2px solid #8bc34a';
+      tooltip.style.animation = 'fadeIn 0.2s ease-out';
+      tooltip.style.fontWeight = '500';
+      tooltip.style.lineHeight = '1.4';
       document.body.appendChild(tooltip);
       btn._tooltip = tooltip;
     };
+
     btn.onmouseleave = () => {
-      btn.style.background = 'linear-gradient(90deg, #f5f5f5 70%, #e3e3e3 100%)';
-      btn.style.transform = 'scale(1)';
+      btn.style.background = 'linear-gradient(135deg, rgba(255,255,255,0.15) 0%, rgba(255,255,255,0.08) 100%)';
+      btn.style.transform = 'translateY(0) scale(1)';
+      btn.style.boxShadow = '0 6px 25px rgba(139, 195, 74, 0.4), inset 0 1px 0 rgba(255,255,255,0.2)';
+      shine.style.left = '-100%';
       if (btn._tooltip) {
         btn._tooltip.remove();
         btn._tooltip = null;
       }
     };
+
     btn.onclick = () => {
       Array.from(grid.children).forEach(child => {
-        if (child !== btn) {
-          child.style.display = 'none';
+        const childBtn = child.querySelector('button');
+        if (childBtn !== btn) {
+          child.style.opacity = '0.35';
+          child.style.transform = 'scale(0.92)';
+          childBtn.style.pointerEvents = 'none';
         } else {
-          child.style.background = 'linear-gradient(90deg, #2e7d3244 0%, #b3e5fc 100%)';
-          child.style.color = '#222';
-          child.style.transform = 'scale(1.12)';
+          childBtn.style.background = 'linear-gradient(135deg, #ffeb3b 0%, #fdd835 100%)';
+          childBtn.style.color = '#1b5e20';
+          childBtn.style.transform = 'translateY(-5px) scale(1.12)';
+          childBtn.style.boxShadow = '0 15px 50px rgba(255, 235, 59, 0.7), inset 0 3px 6px rgba(255,255,255,0.4)';
+          childBtn.style.animation = 'pulseGlow 1.5s infinite';
+          childBtn.style.fontWeight = '900';
+
+          // Efecto de partículas al seleccionar
+          for (let i = 0; i < 25; i++) {
+            const particle = document.createElement('div');
+            particle.style.position = 'fixed';
+            particle.style.width = '8px';
+            particle.style.height = '8px';
+            particle.style.background = ['#8bc34a', '#ffeb3b', '#4caf50'][Math.floor(Math.random() * 3)];
+            particle.style.borderRadius = '50%';
+            particle.style.pointerEvents = 'none';
+            particle.style.zIndex = '1001';
+            particle.style.boxShadow = '0 0 8px currentColor';
+            const rect = btn.getBoundingClientRect();
+            particle.style.left = (rect.left + rect.width / 2) + 'px';
+            particle.style.top = (rect.top + rect.height / 2) + 'px';
+            document.body.appendChild(particle);
+
+            const angle = (Math.PI * 2 * i) / 25;
+            const velocity = 3 + Math.random() * 4;
+            const vx = Math.cos(angle) * velocity;
+            const vy = Math.sin(angle) * velocity;
+
+            let posX = 0, posY = 0;
+            let opacity = 1;
+            const animate = () => {
+              posX += vx;
+              posY += vy;
+              opacity -= 0.015;
+              particle.style.transform = `translate(${posX}px, ${posY}px)`;
+              particle.style.opacity = opacity;
+              if (opacity > 0) {
+                requestAnimationFrame(animate);
+              } else {
+                particle.remove();
+              }
+            };
+            requestAnimationFrame(animate);
+          }
         }
       });
       aumentoSeleccionado = aum;
     };
-    grid.appendChild(btn);
+
+    btnWrapper.appendChild(btn);
+    grid.appendChild(btnWrapper);
   });
   hud.appendChild(grid);
 
-  // Temporizador de 5 segundos
-  const timerDiv = document.createElement('div');
-  timerDiv.style.marginTop = '32px';
-  timerDiv.style.fontSize = '1.3rem';
-  timerDiv.style.fontWeight = 'bold';
-  timerDiv.style.color = '#2e7d32';
-  timerDiv.textContent = 'Tiempo restante: 5s';
-  hud.appendChild(timerDiv);
+  // Temporizador mejorado
+  const timerContainer = document.createElement('div');
+  timerContainer.style.marginTop = '40px';
+  timerContainer.style.padding = '16px 32px';
+  timerContainer.style.background = 'linear-gradient(135deg, rgba(139, 195, 74, 0.25), rgba(104, 159, 56, 0.25))';
+  timerContainer.style.borderRadius = '16px';
+  timerContainer.style.border = '2px solid rgba(139, 195, 74, 0.6)';
+  timerContainer.style.display = 'inline-block';
 
-  let timeLeft = 5;
+  const timerDiv = document.createElement('div');
+  timerDiv.style.fontSize = '1.7rem';
+  timerDiv.style.fontWeight = '900';
+  timerDiv.style.background = 'linear-gradient(135deg, #8bc34a, #aed581)';
+  timerDiv.style.WebkitBackgroundClip = 'text';
+  timerDiv.style.WebkitTextFillColor = 'transparent';
+  timerDiv.style.backgroundClip = 'text';
+  timerDiv.textContent = '⏱️ Tiempo restante: 15s';
+  timerContainer.appendChild(timerDiv);
+  hud.appendChild(timerContainer);
+
+  let timeLeft = 15;
   const timerInterval = setInterval(() => {
     timeLeft--;
-    timerDiv.textContent = `Tiempo restante: ${timeLeft}s`;
+    timerDiv.textContent = `⏱️ Tiempo restante: ${timeLeft}s`;
+
+    // Cambiar a rojo cuando queda poco tiempo
+    if (timeLeft <= 2) {
+      timerDiv.style.background = 'linear-gradient(135deg, #ff5252, #ff1744)';
+      timerDiv.style.WebkitBackgroundClip = 'text';
+      timerDiv.style.backgroundClip = 'text';
+      timerContainer.style.background = 'linear-gradient(135deg, rgba(255, 82, 82, 0.25), rgba(255, 23, 68, 0.25))';
+      timerContainer.style.border = '2px solid rgba(255, 82, 82, 0.8)';
+      timerContainer.style.animation = 'pulseGlow 0.5s infinite';
+    }
+
     if (timeLeft <= 0) {
       clearInterval(timerInterval);
       // Si el usuario seleccionó un aumento, usar ese. Si no, elegir uno aleatorio.
@@ -137,8 +351,19 @@ function mostrarHUDAumentosRonda2() {
 function ocultarHUDAumentosRonda2() {
   hudVisible = false;
   document.querySelectorAll('.aumento-tooltip').forEach(t => t.remove());
+
   const hud = document.getElementById('hudAumentosRonda2');
-  if (hud) hud.remove();
+  const overlay = document.getElementById('aumentosOverlay');
+
+  if (hud) {
+    hud.style.animation = 'fadeIn 0.3s ease-out reverse';
+    setTimeout(() => hud.remove(), 300);
+  }
+
+  if (overlay) {
+    overlay.style.animation = 'fadeIn 0.3s ease-out reverse';
+    setTimeout(() => overlay.remove(), 300);
+  }
 }
 // Determine server URL based on environment
 // Usar IP pública del servidor en producción
@@ -151,17 +376,44 @@ const roomId = localStorage.getItem('batlesd_room_id');
 if (!user || !roomId) {
   window.location.href = 'menu.html';
 }
+
+// Variable para prevenir renderizados múltiples simultáneos
+let renderTimeout = null;
+let isRendering = false;
+
 // Enviar el nick al backend para identificar el socket (después de inicializar user)
 if (user && user.nick) {
   socket.emit('setNick', user.nick);
 }
-socket.on('playerLeft', (updatedSala) => {
+
+// Función wrapper para renderizar con debounce
+function scheduleRender(updatedSala) {
+  // Cancelar cualquier renderizado pendiente
+  if (renderTimeout) {
+    clearTimeout(renderTimeout);
+  }
+  
+  // Actualizar la variable sala inmediatamente
   sala = updatedSala;
-  renderSala(sala);
+  
+  // Si ya está renderizando, esperar
+  if (isRendering) {
+    renderTimeout = setTimeout(() => scheduleRender(updatedSala), 50);
+    return;
+  }
+  
+  // Renderizar después de un pequeño delay para evitar múltiples renders
+  renderTimeout = setTimeout(() => {
+    renderSala(updatedSala);
+  }, 100);
+}
+
+socket.on('playerLeft', (updatedSala) => {
+  scheduleRender(updatedSala);
   // Eliminar de players[] si ya no está
-  if (sala && sala.players) {
+  if (updatedSala && updatedSala.players) {
     for (let i = players.length - 1; i >= 0; i--) {
-      if (!sala.players.find(p => p.nick === players[i].nick)) {
+      if (!updatedSala.players.find(p => p.nick === players[i].nick)) {
         players.splice(i, 1);
       }
     }
@@ -171,8 +423,7 @@ socket.on('playerLeft', (updatedSala) => {
 
 // Escuchar cuando un jugador se une a la sala y actualizar la lista en tiempo real
 socket.on('playerJoined', (updatedSala) => {
-  sala = updatedSala;
-  renderSala(sala);
+  scheduleRender(updatedSala);
 });
 
 socket.on('playersUpdate', (serverPlayers) => {
@@ -235,6 +486,8 @@ socket.on('playersUpdate', (serverPlayers) => {
 
 socket.on('gameStarted', (updatedSala) => {
   sala = updatedSala;
+  // Recibir bloques aleatorios del servidor
+  window.bloquesAleatorios = updatedSala.bloquesAleatorios;
   // Centrar a los jugadores en el mapa (servidor ya lo hace, pero aseguramos aquí)
   if (sala.players.length >= 2) {
     const centerY = MAP_HEIGHT / 2;
@@ -245,7 +498,7 @@ socket.on('gameStarted', (updatedSala) => {
     sala.players[1].y = centerY;
   }
   // Ocultar completamente la sala
-  document.querySelector('.container').style.display = 'none';
+  document.querySelector('.room-container').style.display = 'none';
   // Mostrar canvas
   const canvas = document.getElementById('gameCanvas');
   canvas.style.display = 'block';
@@ -293,6 +546,11 @@ function puedeMoverJugador(x, y) {
       if (colisionJugadorMuro(x, y, muro)) return false;
     }
   }
+  // Verificar colisión con bloques aleatorios
+  if (!window.bloquesAleatorios) return true;
+  for (const bloque of window.bloquesAleatorios) {
+    if (colisionJugadorBloque(x, y, bloque)) return false;
+  }
   return true;
 }
 // Detección de colisión entre jugador y muro de piedra (óvalo)
@@ -309,6 +567,20 @@ function colisionJugadorMuro(playerX, playerY, muro) {
   const rx = muro.width + 32; // 32 = radio del jugador
   const ry = muro.height + 32;
   return (localX * localX) / (rx * rx) + (localY * localY) / (ry * ry) <= 1;
+}
+
+// Detección de colisión entre jugador y bloque aleatorio (cuadrado)
+function colisionJugadorBloque(playerX, playerY, bloque) {
+  // Similar a colisionJugadorMuro
+  const cos = Math.cos(-bloque.angle);
+  const sin = Math.sin(-bloque.angle);
+  const relX = playerX - bloque.x;
+  const relY = playerY - bloque.y;
+  const localX = relX * cos - relY * sin;
+  const localY = relX * sin + relY * cos;
+  const rx = bloque.width / 2 + 32; // ancho del bloque / 2 + radio del jugador
+  const ry = bloque.height / 2 + 32;
+  return Math.abs(localX) <= rx && Math.abs(localY) <= ry;
 }
 const MAP_WIDTH = 2500;
 const MAP_HEIGHT = 1500;
@@ -373,8 +645,8 @@ function drawPlayers() {
     ctx.fillRect(barX, barY, barWidth, barHeight);
     // Vida (verde)
     ctx.fillStyle = '#4caf50';
-    const vida = Math.max(0, Math.min(player.health ?? 100, 100));
-    ctx.fillRect(barX, barY, barWidth * (vida / 100), barHeight);
+    const vida = Math.max(0, Math.min(player.health ?? 200, 200));
+    ctx.fillRect(barX, barY, barWidth * (vida / 200), barHeight);
     // Borde negro
     ctx.lineWidth = 2;
     ctx.strokeStyle = '#222';
@@ -391,7 +663,7 @@ function drawPlayers() {
     ctx.fillStyle = '#222';
     ctx.font = 'bold 12px Roboto, Arial';
     ctx.textAlign = 'center';
-    ctx.fillText(`${vida}/100`, relativeX, barY + barHeight - 2);
+    ctx.fillText(`${vida}/200`, relativeX, barY + barHeight - 2);
   });
 }
 import { Player, createPlayersFromSala } from './players.js';
@@ -811,6 +1083,9 @@ function drawMap() {
   // Fondo gris liso del mundo
   ctx.fillStyle = '#888';
   ctx.fillRect(-offsetX, -offsetY, MAP_WIDTH, MAP_HEIGHT);
+
+  // Dibujar bloques aleatorios
+  dibujarBloquesAleatorios(ctx, offsetX, offsetY);
 
   // Renderizar muros de piedra
   dibujarMurosDePiedra(ctx, offsetX, offsetY);
@@ -1677,6 +1952,8 @@ function handleKeyUp(e) {
 // Movimiento WASD con envío suave cada frame
 socket.on('gameStarted', (updatedSala) => {
   sala = updatedSala;
+  // Recibir bloques aleatorios del servidor
+  window.bloquesAleatorios = updatedSala.bloquesAleatorios;
   // Centrar a los jugadores en el mapa (servidor ya lo hace, pero aseguramos aquí)
   if (sala.players.length >= 2) {
     const centerY = MAP_HEIGHT / 2;
@@ -1687,7 +1964,7 @@ socket.on('gameStarted', (updatedSala) => {
     sala.players[1].y = centerY;
   }
   // Ocultar completamente la sala
-  document.querySelector('.container').style.display = 'none';
+  document.querySelector('.room-container').style.display = 'none';
   // Mostrar canvas
   const canvas = document.getElementById('gameCanvas');
   canvas.style.display = 'block';
@@ -1784,31 +2061,171 @@ socket.on('playersUpdate', (serverPlayers) => {
   }
 });
 
-function renderSala(sala) {
+async function renderSala(sala) {
+  // Marcar que está renderizando
+  isRendering = true;
+  
+  const playersGrid = document.getElementById('playersGrid');
+  const roomInfo = document.getElementById('roomInfo');
+  
   if (!sala) {
     roomInfo.textContent = 'La sala ya no existe.';
-    playersList.innerHTML = '';
+    playersGrid.innerHTML = '';
     startBtn.style.display = 'none';
+    isRendering = false;
     return;
   }
-  roomInfo.innerHTML = `<strong>Host:</strong> ${sala.host.nick}`;
-  playersList.innerHTML = '';
+  
+  roomInfo.innerHTML = `<span class="host-badge">👑 Host</span> <strong>${sala.host.nick}</strong>`;
+  playersGrid.innerHTML = '';
+  
+  // Renderizar los 4 slots de jugadores
   for (let i = 0; i < 4; i++) {
+    const playerCard = document.createElement('div');
+    playerCard.className = 'room-player-card';
+    
     if (sala.players[i]) {
-      const nivel = sala.players[i].nivel || 1;
-      playersList.innerHTML += `<div style="margin-bottom:10px; padding:8px; border-radius:8px; background:#f0f4fa; display:flex; align-items:center; gap:10px;">
-        <strong>${sala.players[i].nick}</strong>
-  <img src="ranks/${nivel}.png" alt="Rango ${nivel}" style="width:32px; height:32px; vertical-align:middle;">
-      </div>`;
+      const player = sala.players[i];
+      
+      // Fetch player stats
+      try {
+        const response = await fetch(`${SERVER_URL}/stats/${player.nick}`);
+        const data = await response.json();
+        
+        if (data.success) {
+          const stats = data.stats;
+          const nivel = stats.nivel || 1;
+          const exp = stats.exp || 0;
+          const victories = stats.victories || 0;
+          const kills = stats.totalKills || 0;
+          const deaths = stats.totalDeaths || 0;
+          const kda = deaths > 0 ? (kills / deaths).toFixed(2) : kills.toFixed(2);
+          
+          // Calcular progreso de experiencia usando la tabla correcta
+          const expForCurrentLevel = getExpForLevel(nivel);
+          const expForNextLevel = getExpForLevel(nivel + 1);
+          const expProgress = Math.max(0, exp - expForCurrentLevel);
+          const expNeeded = expForNextLevel - expForCurrentLevel;
+          const progressPercent = Math.min(100, (expProgress / expNeeded) * 100);
+          
+          playerCard.innerHTML = `
+            <div class="room-player-card-header">
+              <div class="player-avatar">
+                <img src="ranks/${nivel}.png" alt="Rango ${nivel}" class="rank-badge">
+                <div class="player-level">Nv. ${nivel}</div>
+              </div>
+              <div class="room-player-info">
+                <div class="room-player-name">${player.nick}</div>
+                <div class="room-player-title">⚔️ Guerrero</div>
+              </div>
+              ${player.nick === sala.host.nick ? '<div class="crown-icon">👑</div>' : ''}
+            </div>
+            <div class="room-player-stats">
+              <div class="stat-row">
+                <div class="stat-item">
+                  <div class="stat-label">🏆 Victorias</div>
+                  <div class="stat-value">${victories}</div>
+                </div>
+                <div class="stat-item">
+                  <div class="stat-label">⚔️ K/D/A</div>
+                  <div class="stat-value">${kda}</div>
+                </div>
+              </div>
+              <div class="exp-bar-container">
+                <div class="exp-bar-label">
+                  <span>💫 Experiencia</span>
+                  <span class="exp-numbers">Exp: ${exp}</span>
+                </div>
+                <div class="exp-bar">
+                  <div class="exp-bar-fill" style="width: ${progressPercent}%">
+                    <div class="exp-bar-shine"></div>
+                  </div>
+                </div>
+              </div>
+            </div>
+            <div class="room-player-status ready">
+              <span class="status-dot"></span> Listo
+            </div>
+          `;
+        }
+      } catch (error) {
+        console.error('Error fetching player stats:', error);
+        // Renderizado básico si falla la petición
+        const nivel = player.nivel || 1;
+        playerCard.innerHTML = `
+          <div class="room-player-card-header">
+            <div class="player-avatar">
+              <img src="ranks/${nivel}.png" alt="Rango ${nivel}" class="rank-badge">
+              <div class="player-level">Nv. ${nivel}</div>
+            </div>
+            <div class="room-player-info">
+              <div class="room-player-name">${player.nick}</div>
+              <div class="room-player-title">⚔️ Guerrero</div>
+            </div>
+            ${player.nick === sala.host.nick ? '<div class="crown-icon">👑</div>' : ''}
+          </div>
+          <div class="room-player-status ready">
+            <span class="status-dot"></span> Listo
+          </div>
+        `;
+      }
+      
+      playerCard.classList.add('occupied');
     } else {
-      playersList.innerHTML += `<div style="margin-bottom:10px; padding:8px; border-radius:8px; background:#f8f8f8; color:#b0c4de;">Vacante</div>`;
+      // Slot vacante
+      playerCard.classList.add('vacant');
+      playerCard.innerHTML = `
+        <div class="vacant-slot">
+          <div class="vacant-icon">👤</div>
+          <div class="vacant-text">Esperando jugador...</div>
+        </div>
+      `;
     }
+    
+    playersGrid.appendChild(playerCard);
   }
+  
+  // Mostrar botón de iniciar solo para el host
   if (user.nick === sala.host.nick) {
-    startBtn.style.display = 'inline-block';
+    startBtn.style.display = 'inline-flex';
   } else {
     startBtn.style.display = 'none';
   }
+  
+  // Marcar que terminó el renderizado
+  isRendering = false;
+}
+
+// Función auxiliar para calcular experiencia necesaria por nivel
+// Esta función retorna la experiencia BASE (mínima) para alcanzar ese nivel
+function getExpForLevel(level) {
+  // Tabla de experiencia basada en el backend
+  const expTable = {
+    1: 0,      // Nivel 1: de 0 a 199 exp (200 exp necesaria)
+    2: 200,    // Nivel 2: de 200 a 449 exp (250 exp necesaria)
+    3: 450,    // Nivel 3: de 450 a 799 exp (350 exp necesaria)
+    4: 800,    // Nivel 4: de 800 a 1449 exp (650 exp necesaria)
+    5: 1450,   // Nivel 5: de 1450 a 2349 exp (900 exp necesaria)
+    6: 2350,   // Nivel 6: de 2350 a 3399 exp (1050 exp necesaria)
+    7: 3400,   // Nivel 7: de 3400 a 4899 exp (1500 exp necesaria)
+    8: 4900,   // Nivel 8: de 4900 a 6399 exp (1500 exp necesaria)
+    9: 6400,   // Nivel 9: de 6400 a 8799 exp (2400 exp necesaria)
+    10: 8800,  // Nivel 10: de 8800 a 10499 exp (1700 exp necesaria)
+    11: 10500, // Nivel 11: de 10500 a 14499 exp (4000 exp necesaria)
+    12: 14500, // Nivel 12: de 14500 a 19099 exp (4600 exp necesaria)
+    13: 19100, // Nivel 13: de 19100 a 24699 exp (5600 exp necesaria)
+    14: 24700, // Nivel 14: de 24700 a 32499 exp (7800 exp necesaria)
+    15: 32500, // Nivel 15: de 32500 a 39999 exp (7500 exp necesaria)
+    16: 40000, // Nivel 16+: más de 40000 exp
+  };
+  
+  // Si el nivel está en la tabla, retornar el valor
+  if (expTable[level] !== undefined) {
+    return expTable[level];
+  }
+  
+  // Para niveles mayores a 16, usar el último valor conocido
+  return 40000;
 }
 
 async function cargarSala() {
@@ -1885,10 +2302,6 @@ socket.on('shieldApplied', (data) => {
 socket.on('shieldDamage', (data) => {
   // Mostrar daño absorbido por escudo
   showShieldAbsorbed(data);
-});
-
-socket.on('shieldDamage', (data) => {
-  showShieldAbsorb(data);
 });
 
 socket.on('availableUpgrades', (data) => {
@@ -2070,14 +2483,18 @@ socket.on('roundEnded', (data) => {
   activeMuddyGrounds = []; // Clear muddy grounds
   activeSacredGrounds = []; // Clear sacred grounds
   window.murosDePiedra = []; // Clear walls
+  // Recibir nuevos bloques aleatorios
+  window.bloquesAleatorios = data.bloques;
   currentRound++;
   if (currentRound >= 2 && currentRound <= 7) {
     mostrarHUDAumentosRonda2();
   }
-  if (currentRound >= 5) { // Para rondas 5+ mostrar proyectilQ, rondas 1 y 2 usan availableUpgrades
+  if (currentRound >= 6) { // Para rondas 6+ mostrar proyectilQ, rondas 1 y 2 usan availableUpgrades
     // mostrarHUDMejoras(true);
   }
-  availableUpgrades = null; // Resetear para rondas posteriores
+  if (currentRound >= 6) {
+    availableUpgrades = null; // Resetear para rondas posteriores
+  }
   // Limpiar explosiones
   explosions.length = 0;
 });
@@ -2186,65 +2603,310 @@ socket.on('wallsUpdate', (walls) => {
 function mostrarStatsFinales(stats, winner) {
   // Evitar múltiples modales
   if (document.getElementById('gameEndModal')) return;
+
+  // Overlay con efecto de desenfoque
+  const overlay = document.createElement('div');
+  overlay.id = 'gameEndOverlay';
+  overlay.style.position = 'fixed';
+  overlay.style.top = '0';
+  overlay.style.left = '0';
+  overlay.style.width = '100%';
+  overlay.style.height = '100%';
+  overlay.style.background = 'radial-gradient(circle at center, rgba(75, 0, 130, 0.3) 0%, rgba(0,0,0,0.9) 100%)';
+  overlay.style.backdropFilter = 'blur(12px)';
+  overlay.style.zIndex = '999';
+  overlay.style.animation = 'fadeIn 0.5s ease-out';
+  document.body.appendChild(overlay);
+
   // Crear modal
   const modal = document.createElement('div');
   modal.id = 'gameEndModal';
   modal.style.position = 'fixed';
   modal.style.top = '50%';
   modal.style.left = '50%';
-  modal.style.transform = 'translate(-50%, -50%)';
-  modal.style.background = '#fff';
-  modal.style.padding = '40px';
-  modal.style.borderRadius = '24px';
-  modal.style.boxShadow = '0 4px 32px rgba(0,0,0,0.25)';
+  modal.style.transform = 'translate(-50%, -50%) scale(0.9)';
+  modal.style.background = 'linear-gradient(135deg, #667eea 0%, #764ba2 50%, #f093fb 100%)';
+  modal.style.padding = '48px 56px';
+  modal.style.borderRadius = '32px';
+  modal.style.boxShadow = '0 30px 100px rgba(0,0,0,0.8), 0 0 0 2px rgba(255,255,255,0.1), inset 0 2px 0 rgba(255,255,255,0.2)';
   modal.style.zIndex = '1000';
   modal.style.textAlign = 'center';
-  modal.style.width = '500px';
+  modal.style.width = 'auto';
   modal.style.maxWidth = '90vw';
-  modal.style.maxHeight = '80vh';
+  modal.style.maxHeight = '85vh';
   modal.style.overflowY = 'auto';
+  modal.style.animation = 'slideInScale 0.6s cubic-bezier(0.34, 1.56, 0.64, 1) forwards';
 
-  // Título
+  // Asegurar animaciones CSS
+  if (!document.getElementById('gameEndAnimations')) {
+    const style = document.createElement('style');
+    style.id = 'gameEndAnimations';
+    style.textContent = `
+      @keyframes fadeIn {
+        from { opacity: 0; }
+        to { opacity: 1; }
+      }
+      @keyframes slideInScale {
+        from {
+          opacity: 0;
+          transform: translate(-50%, -50%) scale(0.7);
+        }
+        to {
+          opacity: 1;
+          transform: translate(-50%, -50%) scale(1);
+        }
+      }
+      @keyframes pulseGlow {
+        0%, 100% { box-shadow: 0 0 30px rgba(255, 215, 0, 0.6); }
+        50% { box-shadow: 0 0 50px rgba(255, 215, 0, 0.9); }
+      }
+      @keyframes shimmer {
+        0% { background-position: -1000px 0; }
+        100% { background-position: 1000px 0; }
+      }
+      @keyframes bounce {
+        0%, 100% { transform: translateY(0) rotate(0deg); }
+        50% { transform: translateY(-15px) rotate(10deg); }
+      }
+      @keyframes slideUp {
+        from {
+          opacity: 0;
+          transform: translateY(30px);
+        }
+        to {
+          opacity: 1;
+          transform: translateY(0);
+        }
+      }
+      #gameEndModal::-webkit-scrollbar {
+        width: 10px;
+      }
+      #gameEndModal::-webkit-scrollbar-track {
+        background: rgba(255,255,255,0.1);
+        border-radius: 5px;
+      }
+      #gameEndModal::-webkit-scrollbar-thumb {
+        background: rgba(255,255,255,0.3);
+        border-radius: 5px;
+      }
+      #gameEndModal::-webkit-scrollbar-thumb:hover {
+        background: rgba(255,255,255,0.5);
+      }
+    `;
+    document.head.appendChild(style);
+  }
+
+  // Contenedor del título con decoración
+  const titleContainer = document.createElement('div');
+  titleContainer.style.marginBottom = '32px';
+
+  // Icono de trofeo animado
+  const trophy = document.createElement('div');
+  trophy.textContent = '🏆';
+  trophy.style.fontSize = '5rem';
+  trophy.style.marginBottom = '16px';
+  trophy.style.filter = 'drop-shadow(0 0 30px rgba(255, 215, 0, 0.8))';
+  trophy.style.animation = 'bounce 2s ease-in-out infinite';
+  titleContainer.appendChild(trophy);
+
+  // Título principal
   const title = document.createElement('h1');
-  title.textContent = 'Fin del Juego - Estadísticas';
-  title.style.marginBottom = '20px';
-  modal.appendChild(title);
+  title.textContent = '🎮 Fin del Juego 🎮';
+  title.style.fontSize = '3rem';
+  title.style.fontWeight = '900';
+  title.style.background = 'linear-gradient(90deg, #ffd700, #ffed4e, #fff59d, #ffed4e, #ffd700)';
+  title.style.backgroundSize = '200% auto';
+  title.style.WebkitBackgroundClip = 'text';
+  title.style.WebkitTextFillColor = 'transparent';
+  title.style.backgroundClip = 'text';
+  title.style.animation = 'shimmer 3s linear infinite';
+  title.style.margin = '0 0 12px 0';
+  title.style.textShadow = '0 0 40px rgba(255, 215, 0, 0.6)';
+  titleContainer.appendChild(title);
 
-  // Ganador
-  const winnerDiv = document.createElement('div');
-  winnerDiv.textContent = `(ganador: ${winner})`;
-  winnerDiv.style.fontSize = '1.2rem';
-  winnerDiv.style.fontWeight = 'bold';
-  winnerDiv.style.marginBottom = '20px';
-  modal.appendChild(winnerDiv);
+  const subtitle = document.createElement('div');
+  subtitle.textContent = '📊 Resultados de la Batalla';
+  subtitle.style.fontSize = '1.3rem';
+  subtitle.style.color = 'rgba(255,255,255,0.95)';
+  subtitle.style.fontWeight = '600';
+  subtitle.style.letterSpacing = '1px';
+  titleContainer.appendChild(subtitle);
 
-  // Lista de stats
-  stats.forEach(stat => {
-    const statDiv = document.createElement('div');
-    statDiv.style.marginBottom = '10px';
-    statDiv.style.padding = '10px';
-    statDiv.style.border = '1px solid #ccc';
-    statDiv.style.borderRadius = '8px';
-    statDiv.textContent = `${stat.nick}: ${stat.kills} kills, ${stat.deaths} muertes, ${stat.victories} victorias, ${stat.exp} exp`;
-    modal.appendChild(statDiv);
+  modal.appendChild(titleContainer);
+
+  // Ganador con diseño destacado
+  const winnerContainer = document.createElement('div');
+  winnerContainer.style.background = 'linear-gradient(135deg, rgba(255, 215, 0, 0.3), rgba(255, 193, 7, 0.2))';
+  winnerContainer.style.padding = '24px 32px';
+  winnerContainer.style.borderRadius = '20px';
+  winnerContainer.style.marginBottom = '32px';
+  winnerContainer.style.border = '3px solid rgba(255, 215, 0, 0.6)';
+  winnerContainer.style.boxShadow = '0 8px 32px rgba(255, 215, 0, 0.3), inset 0 2px 0 rgba(255,255,255,0.3)';
+  winnerContainer.style.animation = 'pulseGlow 2s infinite';
+
+  const crownIcon = document.createElement('div');
+  crownIcon.textContent = '👑';
+  crownIcon.style.fontSize = '3rem';
+  crownIcon.style.marginBottom = '8px';
+  crownIcon.style.filter = 'drop-shadow(0 0 15px rgba(255, 215, 0, 0.8))';
+  winnerContainer.appendChild(crownIcon);
+
+  const winnerLabel = document.createElement('div');
+  winnerLabel.textContent = 'GANADOR';
+  winnerLabel.style.fontSize = '1rem';
+  winnerLabel.style.color = 'rgba(255,255,255,0.9)';
+  winnerLabel.style.fontWeight = '700';
+  winnerLabel.style.letterSpacing = '3px';
+  winnerLabel.style.marginBottom = '8px';
+  winnerContainer.appendChild(winnerLabel);
+
+  const winnerName = document.createElement('div');
+  winnerName.textContent = winner;
+  winnerName.style.fontSize = '2.2rem';
+  winnerName.style.fontWeight = '900';
+  winnerName.style.color = '#fff';
+  winnerName.style.textShadow = '0 4px 12px rgba(0,0,0,0.4)';
+  winnerContainer.appendChild(winnerName);
+
+  modal.appendChild(winnerContainer);
+
+  // Contenedor de estadísticas
+  const statsContainer = document.createElement('div');
+  statsContainer.style.display = 'flex';
+  statsContainer.style.flexDirection = 'column';
+  statsContainer.style.gap = '16px';
+  statsContainer.style.marginBottom = '32px';
+
+  stats.forEach((stat, idx) => {
+    const isWinner = stat.nick === winner;
+    
+    const statCard = document.createElement('div');
+    statCard.style.background = isWinner 
+      ? 'linear-gradient(135deg, rgba(255, 215, 0, 0.25), rgba(255, 193, 7, 0.15))'
+      : 'linear-gradient(135deg, rgba(255,255,255,0.15), rgba(255,255,255,0.08))';
+    statCard.style.padding = '20px 24px';
+    statCard.style.borderRadius = '18px';
+    statCard.style.border = isWinner 
+      ? '2px solid rgba(255, 215, 0, 0.5)'
+      : '2px solid rgba(255,255,255,0.2)';
+    statCard.style.boxShadow = isWinner
+      ? '0 6px 24px rgba(255, 215, 0, 0.3), inset 0 1px 0 rgba(255,255,255,0.2)'
+      : '0 4px 16px rgba(0,0,0,0.3), inset 0 1px 0 rgba(255,255,255,0.1)';
+    statCard.style.animation = `slideUp 0.5s ease-out ${idx * 0.1}s backwards`;
+    statCard.style.position = 'relative';
+    statCard.style.overflow = 'hidden';
+
+    // Medalla de posición
+    const positionBadge = document.createElement('div');
+    positionBadge.textContent = idx === 0 ? '🥇' : idx === 1 ? '🥈' : '🥉';
+    positionBadge.style.position = 'absolute';
+    positionBadge.style.top = '12px';
+    positionBadge.style.right = '12px';
+    positionBadge.style.fontSize = '2rem';
+    positionBadge.style.filter = 'drop-shadow(0 2px 8px rgba(0,0,0,0.3))';
+    statCard.appendChild(positionBadge);
+
+    // Nombre del jugador
+    const playerName = document.createElement('div');
+    playerName.textContent = stat.nick;
+    playerName.style.fontSize = '1.5rem';
+    playerName.style.fontWeight = '800';
+    playerName.style.color = '#fff';
+    playerName.style.marginBottom = '12px';
+    playerName.style.textAlign = 'left';
+    playerName.style.textShadow = '0 2px 8px rgba(0,0,0,0.3)';
+    statCard.appendChild(playerName);
+
+    // Grid de estadísticas
+    const statsGrid = document.createElement('div');
+    statsGrid.style.display = 'grid';
+    statsGrid.style.gridTemplateColumns = 'repeat(2, 1fr)';
+    statsGrid.style.gap = '12px';
+
+    const statsData = [
+      { icon: '⚔️', label: 'Kills', value: stat.kills, color: '#ff5252' },
+      { icon: '💀', label: 'Muertes', value: stat.deaths, color: '#9e9e9e' },
+      { icon: '🏆', label: 'Victorias', value: stat.victories, color: '#ffd700' },
+      { icon: '✨', label: 'EXP', value: stat.exp, color: '#64b5f6' }
+    ];
+
+    statsData.forEach(data => {
+      const statItem = document.createElement('div');
+      statItem.style.background = 'rgba(0,0,0,0.2)';
+      statItem.style.padding = '12px';
+      statItem.style.borderRadius = '12px';
+      statItem.style.border = '1px solid rgba(255,255,255,0.1)';
+      statItem.style.textAlign = 'center';
+
+      const iconLabel = document.createElement('div');
+      iconLabel.style.fontSize = '1.5rem';
+      iconLabel.style.marginBottom = '4px';
+      iconLabel.textContent = data.icon;
+      statItem.appendChild(iconLabel);
+
+      const label = document.createElement('div');
+      label.textContent = data.label;
+      label.style.fontSize = '0.8rem';
+      label.style.color = 'rgba(255,255,255,0.7)';
+      label.style.fontWeight = '600';
+      label.style.marginBottom = '4px';
+      statItem.appendChild(label);
+
+      const value = document.createElement('div');
+      value.textContent = data.value;
+      value.style.fontSize = '1.4rem';
+      value.style.fontWeight = '900';
+      value.style.color = data.color;
+      value.style.textShadow = `0 2px 8px ${data.color}88`;
+      statItem.appendChild(value);
+
+      statsGrid.appendChild(statItem);
+    });
+
+    statCard.appendChild(statsGrid);
+    statsContainer.appendChild(statCard);
   });
 
-  // Countdown en lugar de botón
+  modal.appendChild(statsContainer);
+
+  // Temporizador con diseño mejorado
+  const timerContainer = document.createElement('div');
+  timerContainer.style.background = 'linear-gradient(135deg, rgba(255,255,255,0.2), rgba(255,255,255,0.1))';
+  timerContainer.style.padding = '20px 32px';
+  timerContainer.style.borderRadius = '18px';
+  timerContainer.style.border = '2px solid rgba(255,255,255,0.3)';
+  timerContainer.style.marginTop = '24px';
+
   let timeLeft = 12;
   const countdown = document.createElement('div');
-  countdown.textContent = `Tiempo restante: ${timeLeft}s`;
+  countdown.textContent = `⏱️ Regresando al menú en ${timeLeft}s`;
   countdown.style.fontSize = '1.5rem';
-  countdown.style.fontWeight = 'bold';
-  countdown.style.marginTop = '20px';
-  modal.appendChild(countdown);
+  countdown.style.fontWeight = '900';
+  countdown.style.background = 'linear-gradient(135deg, #fff, #e0e0e0)';
+  countdown.style.WebkitBackgroundClip = 'text';
+  countdown.style.WebkitTextFillColor = 'transparent';
+  countdown.style.backgroundClip = 'text';
+  timerContainer.appendChild(countdown);
+  modal.appendChild(timerContainer);
 
   const interval = setInterval(() => {
     timeLeft--;
-    countdown.textContent = `Tiempo restante: ${timeLeft}s`;
+    countdown.textContent = `⏱️ Regresando al menú en ${timeLeft}s`;
+    
+    // Efecto de urgencia cuando queda poco tiempo
+    if (timeLeft <= 3) {
+      countdown.style.background = 'linear-gradient(135deg, #ff5252, #ff1744)';
+      countdown.style.WebkitBackgroundClip = 'text';
+      countdown.style.backgroundClip = 'text';
+      timerContainer.style.animation = 'pulseGlow 0.5s infinite';
+      timerContainer.style.border = '2px solid rgba(255, 82, 82, 0.6)';
+    }
+    
     if (timeLeft <= 0) {
       clearInterval(interval);
       // Distribuir exp y cerrar
       socket.emit('gameAccepted', { stats: stats, winner: winner });
+      overlay.remove();
       modal.remove();
       window.location.href = 'menu.html';
     }
@@ -2260,53 +2922,174 @@ function mostrarHUDSeleccionHabilidades() {
   if (hudAntiguo) hudAntiguo.remove();
   if (document.getElementById('habilidadesHUD')) return;
   hudVisible = true;
+
+  // Overlay oscuro de fondo
+  const overlay = document.createElement('div');
+  overlay.id = 'habilidadesOverlay';
+  overlay.style.position = 'fixed';
+  overlay.style.top = '0';
+  overlay.style.left = '0';
+  overlay.style.width = '100%';
+  overlay.style.height = '100%';
+  overlay.style.background = 'radial-gradient(circle at center, rgba(0,0,0,0.75) 0%, rgba(0,0,0,0.92) 100%)';
+  overlay.style.zIndex = '999';
+  overlay.style.animation = 'fadeIn 0.4s ease-out';
+  document.body.appendChild(overlay);
+
   const hud = document.createElement('div');
   hud.id = 'habilidadesHUD';
   hud.style.position = 'fixed';
   hud.style.top = '50%';
   hud.style.left = '50%';
-  hud.style.transform = 'translate(-50%, -50%)';
-  hud.style.background = 'rgba(255,255,255,0.98)';
-  hud.style.padding = '40px 48px';
-  hud.style.borderRadius = '32px';
-  hud.style.boxShadow = '0 8px 48px rgba(0,0,0,0.30)';
+  hud.style.transform = 'translate(-50%, -50%) scale(0.9)';
+  hud.style.background = 'linear-gradient(135deg, #1a1a2e 0%, #16213e 50%, #0f3460 100%)';
+  hud.style.padding = '24px 32px';
+  hud.style.borderRadius = '24px';
+  hud.style.boxShadow = '0 20px 80px rgba(0,0,0,0.6), 0 0 0 1px rgba(255,255,255,0.1), inset 0 1px 0 rgba(255,255,255,0.1)';
   hud.style.zIndex = '1000';
   hud.style.pointerEvents = 'none';
   hud.style.textAlign = 'center';
-  hud.style.width = '900px';
-  hud.style.maxWidth = '98vw';
-  hud.style.maxHeight = '92vh';
-  hud.style.overflowY = 'auto';
-  hud.style.border = '2px solid #222';
+  hud.style.width = 'auto';
+  hud.style.maxWidth = '95vw';
+  hud.style.maxHeight = '95vh';
+  hud.style.animation = 'slideInScale 0.5s cubic-bezier(0.34, 1.56, 0.64, 1) forwards';
+  hud.style.backdropFilter = 'blur(10px)';
+  hud.style.display = 'flex';
+  hud.style.flexDirection = 'column';
+  hud.style.overflow = 'hidden';
 
-  // Título
+  // Añadir keyframes de animación
+  if (!document.getElementById('skillSelectorAnimations')) {
+    const style = document.createElement('style');
+    style.id = 'skillSelectorAnimations';
+    style.textContent = `
+      @keyframes fadeIn {
+        from { opacity: 0; }
+        to { opacity: 1; }
+      }
+      @keyframes slideInScale {
+        from {
+          opacity: 0;
+          transform: translate(-50%, -50%) scale(0.8);
+        }
+        to {
+          opacity: 1;
+          transform: translate(-50%, -50%) scale(1);
+        }
+      }
+      @keyframes pulseGlow {
+        0%, 100% {
+          box-shadow: 0 0 20px rgba(255,255,255,0.3);
+        }
+        50% {
+          box-shadow: 0 0 35px rgba(255,255,255,0.5);
+        }
+      }
+      @keyframes shimmer {
+        0% { background-position: -1000px 0; }
+        100% { background-position: 1000px 0; }
+      }
+    `;
+    document.head.appendChild(style);
+  }
+
+  // Título principal compacto
+  const titleContainer = document.createElement('div');
+  titleContainer.style.marginBottom = '20px';
+  titleContainer.style.flexShrink = '0';
+  
   const title = document.createElement('h2');
-  title.textContent = 'Selecciona tus habilidades para cada tecla';
-  title.style.marginBottom = '32px';
-  title.style.fontSize = '2.2rem';
-  title.style.fontWeight = 'bold';
-  title.style.color = '#222';
-  hud.appendChild(title);
+  title.textContent = '⚡ Selecciona tus Habilidades ⚡';
+  title.style.fontSize = '2rem';
+  title.style.fontWeight = '900';
+  title.style.background = 'linear-gradient(90deg, #ff6b6b, #feca57, #48dbfb, #ff9ff3, #ff6b6b)';
+  title.style.backgroundSize = '200% auto';
+  title.style.WebkitBackgroundClip = 'text';
+  title.style.WebkitTextFillColor = 'transparent';
+  title.style.backgroundClip = 'text';
+  title.style.animation = 'shimmer 3s linear infinite';
+  title.style.margin = '0';
+  title.style.textShadow = '0 0 30px rgba(255,255,255,0.5)';
+  titleContainer.appendChild(title);
 
-  // Crear secciones para cada tecla
+  hud.appendChild(titleContainer);
+
+  // Contenedor de habilidades en grid 2x2
+  const mainGrid = document.createElement('div');
+  mainGrid.style.display = 'grid';
+  mainGrid.style.gridTemplateColumns = 'repeat(2, 1fr)';
+  mainGrid.style.gap = '16px';
+  mainGrid.style.width = '100%';
+  mainGrid.style.maxWidth = '1100px';
+  mainGrid.style.flexGrow = '1';
+  mainGrid.style.alignItems = 'start';
+
+  // Crear secciones para cada tecla con iconos mejorados
   const teclas = [
-    { nombre: 'Click Izquierdo', filtro: m => m.proyectil && !m.proyectilQ && !m.proyectilE && !m.proyectilEspacio },
-    { nombre: 'Q', filtro: m => m.proyectilQ },
-    { nombre: 'E', filtro: m => m.proyectilE },
-    { nombre: 'Espacio', filtro: m => m.proyectilEspacio }
+    { 
+      nombre: 'Click Izquierdo', 
+      icono: '🖱️',
+      color: '#3498db',
+      filtro: m => m.proyectil && !m.proyectilQ && !m.proyectilE && !m.proyectilEspacio 
+    },
+    { 
+      nombre: 'Q', 
+      icono: '🔥',
+      color: '#e74c3c',
+      filtro: m => m.proyectilQ 
+    },
+    { 
+      nombre: 'E', 
+      icono: '🛡️',
+      color: '#9b59b6',
+      filtro: m => m.proyectilE 
+    },
+    { 
+      nombre: 'Espacio', 
+      icono: '⚡',
+      color: '#f1c40f',
+      filtro: m => m.proyectilEspacio 
+    }
   ];
-  teclas.forEach(tecla => {
+
+  teclas.forEach((tecla, idx) => {
     const section = document.createElement('div');
-    section.style.marginBottom = '28px';
-    section.style.padding = '0 0 8px 0';
-    section.style.borderBottom = '1px solid #eee';
+    section.style.padding = '16px';
+    section.style.background = 'rgba(255,255,255,0.03)';
+    section.style.borderRadius = '16px';
+    section.style.border = '1px solid rgba(255,255,255,0.08)';
+    section.style.transition = 'all 0.3s ease';
+    section.style.animation = `slideInScale 0.5s cubic-bezier(0.34, 1.56, 0.64, 1) ${idx * 0.1}s backwards`;
+    section.style.display = 'flex';
+    section.style.flexDirection = 'column';
+    section.style.height = '100%';
+    
+    const labelContainer = document.createElement('div');
+    labelContainer.style.display = 'flex';
+    labelContainer.style.alignItems = 'center';
+    labelContainer.style.justifyContent = 'center';
+    labelContainer.style.gap = '8px';
+    labelContainer.style.marginBottom = '12px';
+
+    const iconSpan = document.createElement('span');
+    iconSpan.textContent = tecla.icono;
+    iconSpan.style.fontSize = '1.5rem';
+    iconSpan.style.filter = 'drop-shadow(0 0 8px rgba(255,255,255,0.3))';
+    labelContainer.appendChild(iconSpan);
+
     const label = document.createElement('h3');
-    label.textContent = `Habilidades ${tecla.nombre}`;
-    label.style.fontSize = '1.35rem';
-    label.style.fontWeight = 'bold';
-    label.style.marginBottom = '18px';
-    label.style.color = '#333';
-    section.appendChild(label);
+    label.textContent = tecla.nombre === 'Click Izquierdo' ? 'Click' : tecla.nombre;
+    label.style.fontSize = '1.2rem';
+    label.style.fontWeight = '800';
+    label.style.background = `linear-gradient(135deg, ${tecla.color}, ${tecla.color}dd)`;
+    label.style.WebkitBackgroundClip = 'text';
+    label.style.WebkitTextFillColor = 'transparent';
+    label.style.backgroundClip = 'text';
+    label.style.margin = '0';
+    labelContainer.appendChild(label);
+
+    section.appendChild(labelContainer);
+    
     // Seleccionar 3 habilidades al azar para cada sección
     let habilidades = MEJORAS.filter(tecla.filtro);
     if (habilidades.length > 3) {
@@ -2316,66 +3099,143 @@ function mostrarHUDSeleccionHabilidades() {
         .map(({h}) => h)
         .slice(0, 3);
     }
+    
     const grid = document.createElement('div');
     grid.style.display = 'flex';
-    grid.style.justifyContent = 'center';
-    grid.style.gap = '18px';
-    grid.style.flexWrap = 'wrap';
+    grid.style.flexDirection = 'column';
+    grid.style.gap = '8px';
+    grid.style.flexGrow = '1';
 
-    habilidades.forEach(hab => {
+    habilidades.forEach((hab, habIdx) => {
+      const btnWrapper = document.createElement('div');
+      btnWrapper.style.position = 'relative';
+      btnWrapper.style.animation = `slideInScale 0.4s cubic-bezier(0.34, 1.56, 0.64, 1) ${(idx * 0.1) + (habIdx * 0.1)}s backwards`;
+
       const btn = document.createElement('button');
       btn.textContent = hab.nombre;
-      btn.style.padding = '14px 28px';
-      btn.style.borderRadius = '16px';
-      btn.style.border = `2.5px solid ${hab.color}`;
-      btn.style.background = 'linear-gradient(90deg, #f5f5f5 70%, #e3e3e3 100%)';
+      btn.style.padding = '12px 20px';
+      btn.style.borderRadius = '12px';
+      btn.style.border = `2px solid ${hab.color}`;
+      btn.style.background = `linear-gradient(135deg, rgba(255,255,255,0.1) 0%, rgba(255,255,255,0.05) 100%)`;
       btn.style.cursor = 'pointer';
-      btn.style.fontWeight = 'bold';
-      btn.style.fontSize = '1.1rem';
-      btn.style.color = hab.color;
-      btn.style.boxShadow = `0 2px 12px ${hab.color}33`;
+      btn.style.fontWeight = '700';
+      btn.style.fontSize = '0.95rem';
+      btn.style.color = '#fff';
+      btn.style.boxShadow = `0 4px 15px ${hab.color}40, inset 0 1px 0 rgba(255,255,255,0.1)`;
       btn.style.pointerEvents = 'auto';
+      btn.style.position = 'relative';
+      btn.style.overflow = 'hidden';
+      btn.style.transition = 'all 0.3s cubic-bezier(0.34, 1.56, 0.64, 1)';
+      btn.style.width = '100%';
+      btn.style.textShadow = `0 2px 8px ${hab.color}88`;
+      btn.style.whiteSpace = 'nowrap';
+      btn.style.textOverflow = 'ellipsis';
+
+      // Efecto de brillo en hover
+      const shine = document.createElement('span');
+      shine.style.position = 'absolute';
+      shine.style.top = '0';
+      shine.style.left = '-100%';
+      shine.style.width = '100%';
+      shine.style.height = '100%';
+      shine.style.background = 'linear-gradient(90deg, transparent, rgba(255,255,255,0.3), transparent)';
+      shine.style.transition = 'left 0.5s';
+      shine.style.pointerEvents = 'none';
+      btn.appendChild(shine);
+
       btn.onmouseenter = (e) => {
-        btn.style.background = `linear-gradient(90deg, ${hab.color}22 0%, #f5f5f5 100%)`;
-        btn.style.transform = 'scale(1.07)';
-        // Custom tooltip
+        btn.style.background = `linear-gradient(135deg, ${hab.color}55 0%, ${hab.color}33 100%)`;
+        btn.style.transform = 'translateY(-2px) scale(1.03)';
+        btn.style.boxShadow = `0 6px 25px ${hab.color}60, inset 0 1px 0 rgba(255,255,255,0.2)`;
+        shine.style.left = '100%';
+        
+        // Tooltip mejorado
         let tooltip = document.createElement('div');
         tooltip.className = 'mejora-tooltip';
         tooltip.textContent = hab.descripcion || '';
         tooltip.style.position = 'fixed';
-        tooltip.style.left = (e.clientX + 18) + 'px';
-        tooltip.style.top = (e.clientY - 12) + 'px';
-        tooltip.style.background = '#222';
+        tooltip.style.left = (e.clientX + 20) + 'px';
+        tooltip.style.top = (e.clientY - 15) + 'px';
+        tooltip.style.background = 'linear-gradient(135deg, #1a1a2e 0%, #0f3460 100%)';
         tooltip.style.color = '#fff';
-        tooltip.style.padding = '12px 18px';
-        tooltip.style.borderRadius = '12px';
-        tooltip.style.fontSize = '1rem';
+        tooltip.style.padding = '12px 16px';
+        tooltip.style.borderRadius = '10px';
+        tooltip.style.fontSize = '0.9rem';
         tooltip.style.zIndex = '2000';
-        tooltip.style.boxShadow = '0 2px 12px #0006';
-        tooltip.style.maxWidth = '340px';
+        tooltip.style.boxShadow = '0 8px 32px rgba(0,0,0,0.5)';
+        tooltip.style.maxWidth = '280px';
         tooltip.style.pointerEvents = 'none';
+        tooltip.style.border = `1px solid ${hab.color}`;
+        tooltip.style.animation = 'fadeIn 0.2s ease-out';
         document.body.appendChild(tooltip);
         btn._tooltip = tooltip;
       };
+      
       btn.onmouseleave = () => {
-        btn.style.background = 'linear-gradient(90deg, #f5f5f5 70%, #e3e3e3 100%)';
-        btn.style.transform = 'scale(1)';
+        btn.style.background = 'linear-gradient(135deg, rgba(255,255,255,0.1) 0%, rgba(255,255,255,0.05) 100%)';
+        btn.style.transform = 'translateY(0) scale(1)';
+        btn.style.boxShadow = `0 4px 15px ${hab.color}40, inset 0 1px 0 rgba(255,255,255,0.1)`;
+        shine.style.left = '-100%';
         if (btn._tooltip) {
           btn._tooltip.remove();
           btn._tooltip = null;
         }
       };
+      
       btn.onclick = () => {
         // Oculta todos los botones menos el seleccionado
         Array.from(grid.children).forEach(child => {
-          if (child !== btn) {
-            child.style.display = 'none';
+          const childBtn = child.querySelector('button');
+          if (childBtn !== btn) {
+            child.style.opacity = '0.3';
+            child.style.transform = 'scale(0.95)';
+            childBtn.style.pointerEvents = 'none';
           } else {
-            child.style.background = `linear-gradient(90deg, ${hab.color}44 0%, #b3e5fc 100%)`;
-            child.style.color = '#222';
-            child.style.transform = 'scale(1.12)';
+            childBtn.style.background = `linear-gradient(135deg, ${hab.color} 0%, ${hab.color}dd 100%)`;
+            childBtn.style.color = '#fff';
+            childBtn.style.transform = 'translateY(-2px) scale(1.05)';
+            childBtn.style.boxShadow = `0 8px 30px ${hab.color}80, inset 0 2px 4px rgba(255,255,255,0.3)`;
+            childBtn.style.animation = 'pulseGlow 1.5s infinite';
+            
+            // Efecto de confeti
+            for (let i = 0; i < 15; i++) {
+              const particle = document.createElement('div');
+              particle.style.position = 'fixed';
+              particle.style.width = '5px';
+              particle.style.height = '5px';
+              particle.style.background = hab.color;
+              particle.style.borderRadius = '50%';
+              particle.style.pointerEvents = 'none';
+              particle.style.zIndex = '1001';
+              const rect = btn.getBoundingClientRect();
+              particle.style.left = (rect.left + rect.width / 2) + 'px';
+              particle.style.top = (rect.top + rect.height / 2) + 'px';
+              document.body.appendChild(particle);
+              
+              const angle = (Math.PI * 2 * i) / 15;
+              const velocity = 2 + Math.random() * 2;
+              const vx = Math.cos(angle) * velocity;
+              const vy = Math.sin(angle) * velocity;
+              
+              let posX = 0, posY = 0;
+              let opacity = 1;
+              const animate = () => {
+                posX += vx;
+                posY += vy;
+                opacity -= 0.02;
+                particle.style.transform = `translate(${posX}px, ${posY}px)`;
+                particle.style.opacity = opacity;
+                if (opacity > 0) {
+                  requestAnimationFrame(animate);
+                } else {
+                  particle.remove();
+                }
+              };
+              requestAnimationFrame(animate);
+            }
           }
         });
+        
         socket.emit('selectUpgrade', { roomId, mejoraId: hab.id });
         // Set local variable for immediate use
         if (tecla.nombre === 'Click Izquierdo') {
@@ -2385,25 +3245,52 @@ function mostrarHUDSeleccionHabilidades() {
         }
         // For E and Espacio, they will be added to mejorasJugador via playerUpgraded event
       };
-      grid.appendChild(btn);
+      
+      btnWrapper.appendChild(btn);
+      grid.appendChild(btnWrapper);
     });
+    
     section.appendChild(grid);
-    hud.appendChild(section);
+    mainGrid.appendChild(section);
   });
 
-  // Temporizador de 10 segundos
-  const timerDiv = document.createElement('div');
-  timerDiv.style.marginTop = '40px';
-  timerDiv.style.fontSize = '1.5rem';
-  timerDiv.style.fontWeight = 'bold';
-  timerDiv.style.color = '#2e7d32';
-  timerDiv.textContent = 'Tiempo restante: 10s';
-  hud.appendChild(timerDiv);
+  hud.appendChild(mainGrid);
 
-  let timeLeft = 3;
+  // Temporizador con diseño mejorado
+  const timerContainer = document.createElement('div');
+  timerContainer.style.marginTop = '20px';
+  timerContainer.style.padding = '12px 24px';
+  timerContainer.style.background = 'linear-gradient(135deg, rgba(46, 125, 50, 0.2), rgba(27, 94, 32, 0.2))';
+  timerContainer.style.borderRadius = '12px';
+  timerContainer.style.border = '2px solid rgba(76, 175, 80, 0.5)';
+  timerContainer.style.flexShrink = '0';
+  
+  const timerDiv = document.createElement('div');
+  timerDiv.style.fontSize = '1.4rem';
+  timerDiv.style.fontWeight = '900';
+  timerDiv.style.background = 'linear-gradient(135deg, #4caf50, #81c784)';
+  timerDiv.style.WebkitBackgroundClip = 'text';
+  timerDiv.style.WebkitTextFillColor = 'transparent';
+  timerDiv.style.backgroundClip = 'text';
+  timerDiv.textContent = '⏱️ Tiempo restante: 30s';
+  timerContainer.appendChild(timerDiv);
+  hud.appendChild(timerContainer);
+
+  let timeLeft = 30;
   const timerInterval = setInterval(() => {
     timeLeft--;
-    timerDiv.textContent = `Tiempo restante: ${timeLeft}s`;
+    timerDiv.textContent = `⏱️ Tiempo restante: ${timeLeft}s`;
+    
+    // Cambiar color cuando queda poco tiempo
+    if (timeLeft <= 3) {
+      timerDiv.style.background = 'linear-gradient(135deg, #f44336, #ff5722)';
+      timerDiv.style.WebkitBackgroundClip = 'text';
+      timerDiv.style.backgroundClip = 'text';
+      timerContainer.style.background = 'linear-gradient(135deg, rgba(244, 67, 54, 0.2), rgba(211, 47, 47, 0.2))';
+      timerContainer.style.border = '2px solid rgba(244, 67, 54, 0.5)';
+      timerContainer.style.animation = 'pulseGlow 0.5s infinite';
+    }
+    
     if (timeLeft <= 0) {
       clearInterval(timerInterval);
       ocultarHUDSeleccionHabilidades();
@@ -2417,6 +3304,17 @@ function mostrarHUDSeleccionHabilidades() {
 function ocultarHUDSeleccionHabilidades() {
   hudVisible = false;
   document.querySelectorAll('.mejora-tooltip').forEach(t => t.remove());
+  
   const hud = document.getElementById('habilidadesHUD');
-  if (hud) hud.remove();
+  const overlay = document.getElementById('habilidadesOverlay');
+  
+  if (hud) {
+    hud.style.animation = 'fadeIn 0.3s ease-out reverse';
+    setTimeout(() => hud.remove(), 300);
+  }
+  
+  if (overlay) {
+    overlay.style.animation = 'fadeIn 0.3s ease-out reverse';
+    setTimeout(() => overlay.remove(), 300);
+  }
 }

@@ -3,32 +3,126 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>BatlesD - Registro e Inicio de Sesión</title>
-  <link href="https://fonts.googleapis.com/css2?family=Roboto:wght@500&display=swap" rel="stylesheet">
+  <title>Skill Royale - Bienvenido</title>
+  <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="styles.css">
 </head>
 <body>
-  <div class="container">
-    <h1>BatlesD</h1>
-    <div class="form-box">
-      <h2>Registro</h2>
-      <form id="registerForm">
-        <input type="text" id="registerNick" placeholder="Nick" required>
-        <input type="password" id="registerPassword" placeholder="Contraseña" required>
-        <button type="submit">Registrarse</button>
-        <div id="registerMsg" class="msg"></div>
+  <!-- Fondo animado con partículas -->
+  <div class="particles-background">
+    <div class="particle"></div>
+    <div class="particle"></div>
+    <div class="particle"></div>
+    <div class="particle"></div>
+    <div class="particle"></div>
+    <div class="particle"></div>
+    <div class="particle"></div>
+    <div class="particle"></div>
+  </div>
+
+  <div class="auth-container">
+    <!-- Logo y título principal -->
+    <div class="auth-header">
+      <div class="logo-circle">
+        <img src="ranks/37.png" alt="Skill Royale Logo">
+      </div>
+      <h1 class="auth-title">Skill Royale</h1>
+      <p class="auth-subtitle">Únete a la batalla definitiva</p>
+    </div>
+
+    <!-- Pestañas de Login/Registro -->
+    <div class="auth-tabs">
+      <button class="auth-tab active" data-tab="login">Iniciar Sesión</button>
+      <button class="auth-tab" data-tab="register">Registrarse</button>
+    </div>
+
+    <!-- Formulario de Login -->
+    <div class="auth-form-container active" id="loginContainer">
+      <form id="loginForm" class="auth-form">
+        <div class="input-group">
+          <div class="input-icon">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"></path>
+              <circle cx="12" cy="7" r="4"></circle>
+            </svg>
+          </div>
+          <input type="text" id="loginNick" placeholder="Nombre de usuario" required autocomplete="username">
+        </div>
+        <div class="input-group">
+          <div class="input-icon">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <rect x="3" y="11" width="18" height="11" rx="2" ry="2"></rect>
+              <path d="M7 11V7a5 5 0 0 1 10 0v4"></path>
+            </svg>
+          </div>
+          <input type="password" id="loginPassword" placeholder="Contraseña" required autocomplete="current-password">
+          <button type="button" class="toggle-password" data-target="loginPassword">
+            <svg class="eye-open" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"></path>
+              <circle cx="12" cy="12" r="3"></circle>
+            </svg>
+            <svg class="eye-closed" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="display:none;">
+              <path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24"></path>
+              <line x1="1" y1="1" x2="23" y2="23"></line>
+            </svg>
+          </button>
+        </div>
+        <div id="loginMsg" class="auth-msg"></div>
+        <button type="submit" class="auth-submit-btn">
+          <span>Entrar al juego</span>
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <line x1="5" y1="12" x2="19" y2="12"></line>
+            <polyline points="12 5 19 12 12 19"></polyline>
+          </svg>
+        </button>
       </form>
     </div>
-    <div class="form-box">
-      <h2>Inicio de Sesión</h2>
-      <form id="loginForm">
-        <input type="text" id="loginNick" placeholder="Nick" required>
-        <input type="password" id="loginPassword" placeholder="Contraseña" required>
-        <button type="submit">Iniciar Sesión</button>
-        <div id="loginMsg" class="msg"></div>
+
+    <!-- Formulario de Registro -->
+    <div class="auth-form-container" id="registerContainer">
+      <form id="registerForm" class="auth-form">
+        <div class="input-group">
+          <div class="input-icon">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"></path>
+              <circle cx="12" cy="7" r="4"></circle>
+            </svg>
+          </div>
+          <input type="text" id="registerNick" placeholder="Elige tu nombre de usuario" required autocomplete="username">
+        </div>
+        <div class="input-group">
+          <div class="input-icon">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <rect x="3" y="11" width="18" height="11" rx="2" ry="2"></rect>
+              <path d="M7 11V7a5 5 0 0 1 10 0v4"></path>
+            </svg>
+          </div>
+          <input type="password" id="registerPassword" placeholder="Crea una contraseña" required autocomplete="new-password">
+          <button type="button" class="toggle-password" data-target="registerPassword">
+            <svg class="eye-open" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"></path>
+              <circle cx="12" cy="12" r="3"></circle>
+            </svg>
+            <svg class="eye-closed" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="display:none;">
+              <path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24"></path>
+              <line x1="1" y1="1" x2="23" y2="23"></line>
+            </svg>
+          </button>
+        </div>
+        <div id="registerMsg" class="auth-msg"></div>
+        <button type="submit" class="auth-submit-btn">
+          <span>Crear cuenta</span>
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M16 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"></path>
+            <circle cx="8.5" cy="7" r="4"></circle>
+            <line x1="20" y1="8" x2="20" y2="14"></line>
+            <line x1="23" y1="11" x2="17" y2="11"></line>
+          </svg>
+        </button>
       </form>
     </div>
   </div>
+
   <script src="script.js"></script>
 </body>
 </html>

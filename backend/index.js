@@ -20,7 +20,7 @@ app.get('/', (req, res) => {
 });
 // const db = new sqlite3.Database('users.db');
 const port = 3000;
-const DEFAULT_SPEED = 4;
+const DEFAULT_SPEED = 5;
 // Contador para IDs de proyectiles
 let projectileIdCounter = 0;
 
@@ -51,6 +51,52 @@ const io = new Server(server, {
     methods: ["GET", "POST"]
   }
 });
+
+// Función para generar bloques aleatorios
+function generarBloquesAleatorios(players) {
+  const bloques = [];
+  const numBloques = 12;
+  const MAP_WIDTH = 2500;
+  const MAP_HEIGHT = 1500;
+
+  for (let i = 0; i < numBloques; i++) {
+    let x, y;
+    let attempts = 0;
+    const maxAttempts = 200; // Aumentar intentos
+
+    do {
+      x = Math.random() * (MAP_WIDTH - 400) + 200; // Evitar bordes
+      y = Math.random() * (MAP_HEIGHT - 400) + 200;
+      attempts++;
+      // Verificar distancia a jugadores
+      let tooClose = false;
+      for (const player of players) {
+        const dx = x - player.x;
+        const dy = y - player.y;
+        const dist = Math.sqrt(dx * dx + dy * dy);
+        if (dist < 200) { // Distancia mínima 200 para evitar bugs
+          tooClose = true;
+          break;
+        }
+      }
+      if (tooClose) continue;
+    } while (attempts < maxAttempts);
+
+    // Propiedades del bloque ovalado largo y grande
+    const bloque = {
+      x: x,
+      y: y,
+      width: 200 + Math.random() * 200, // Ancho entre 200-400
+      height: 60 + Math.random() * 40,  // Alto entre 60-100 (más largo)
+      angle: Math.random() * Math.PI * 2, // Ángulo aleatorio
+      color: '#000000' // Color negro para paredes
+    };
+
+    bloques.push(bloque);
+  }
+
+  return bloques;
+}
 
 io.on('connection', (socket) => {
   // Recibir estado de teclas de movimiento desde el cliente
@@ -103,6 +149,8 @@ io.on('connection', (socket) => {
     if (sala.players.length < 2) return; // Necesita al menos 2 jugadores
     // Inicializar ronda por sala si no existe
     sala.round = 1;
+    // Generar bloques aleatorios para la partida
+    sala.bloquesAleatorios = generarBloquesAleatorios(sala.players);
     // Distribuir hasta 4 jugadores en las esquinas
     const offset = 200;
     sala.players.forEach((player, i) => {
@@ -176,6 +224,21 @@ io.on('connection', (socket) => {
             break;
           }
         }
+      }
+    }
+    // Verificar colisión con bloques aleatorios
+    for (const bloque of sala.bloquesAleatorios) {
+      const cos = Math.cos(-bloque.angle);
+      const sin = Math.sin(-bloque.angle);
+      const relX = x - bloque.x;
+      const relY = y - bloque.y;
+      const localX = relX * cos - relY * sin;
+      const localY = relX * sin + relY * cos;
+      const rx = bloque.width / 2 + (32); // ancho del bloque / 2 + radio del jugador
+      const ry = bloque.height / 2 + (32);
+      if (Math.abs(localX) <= rx && Math.abs(localY) <= ry) {
+        puedeMover = false;
+        break;
       }
     }
     if (puedeMover) {
@@ -315,10 +378,22 @@ io.on('connection', (socket) => {
         if (player) {
           player.shieldAmount = (player.shieldAmount || 0) + mejora.shieldAmount;
           player.shieldUntil = Date.now() + mejora.duracion;
+          // Aplicar upgrades de escudo
+          let extraDuracion = 0;
+          let extraShield = 0;
+          if (player.mejoras) {
+            const danoEscudoUpgrades = player.mejoras.filter(m => m.id === 'dano_escudo');
+            danoEscudoUpgrades.forEach(() => {
+              extraDuracion += 1000;
+              extraShield += 15;
+            });
+          }
+          player.shieldAmount += extraShield;
+          player.shieldUntil += extraDuracion;
           io.to(data.roomId).emit('shieldApplied', {
             nick: data.owner,
             shieldAmount: player.shieldAmount,
-            duration: mejora.duracion
+            duration: mejora.duracion + extraDuracion
           });
         }
       }
@@ -366,12 +441,48 @@ io.on('connection', (socket) => {
         const agrandadores = player.mejoras.filter(m => m.id === 'agrandar');
         const numAgrandadores = agrandadores.length;
         radius += numAgrandadores * 10;
+
+        // Lógica para Dividor
+        const dividorStacks = player.mejoras.filter(m => m.id === 'dividor').length;
+        if (dividorStacks > 0 && mejora.proyectil) {
+          // Disparar N proyectiles (1 base + N stacks)
+          const totalProjectiles = 1 + dividorStacks;
+          const separationAngle = (mejora.efecto && mejora.efecto.separationAngle) ? mejora.efecto.separationAngle : 18;
+          const baseAngle = angle;
+          const mid = Math.floor(totalProjectiles / 2);
+          for (let i = 0; i < totalProjectiles; i++) {
+            let offset = (i - mid) * separationAngle * Math.PI / 180;
+            // Si es par, centrar los ángulos
+            if (totalProjectiles % 2 === 0) offset += separationAngle * Math.PI / 360;
+            const projAngle = baseAngle + offset;
+            proyectilesPorSala[data.roomId].push({
+              id: ++projectileIdCounter, // Asignar ID único
+              x: startX,
+              y: startY,
+              startX,
+              startY,
+              angle: projAngle,
+              velocidad: data.velocidad, // Debe enviarse desde el cliente
+              mejoraId: mejora.id,
+              owner: data.owner,
+              lifetime: 0,
+              targetX,
+              targetY,
+              radius,
+              skillShot,
+              skyfall: data.skyfall || false
+            });
+          }
+          return;
+        }
       }
     }
     proyectilesPorSala[data.roomId].push({
       id: ++projectileIdCounter, // Asignar ID único
       x: startX,
       y: startY,
+      startX,
+      startY,
       angle,
       velocidad: data.velocidad, // Debe enviarse desde el cliente
       mejoraId: data.mejoraId,
@@ -458,7 +569,7 @@ io.on('connection', (socket) => {
             const relY = player.y - muro.y;
             const localX = relX * cos - relY * sin;
             const localY = relX * sin + relY * cos;
-            const rx = muro.width + 32;
+            const rx = muro.width + 32; // 32 = radio aproximado del player
             const ry = muro.height + 32;
             if ((localX * localX) / (rx * rx) + (localY * localY) / (ry * ry) <= 1) {
               // Empujar al jugador fuera del muro
@@ -479,6 +590,36 @@ io.on('connection', (socket) => {
               adjusted = true;
             }
           }
+        }
+      }
+      // Ajustar posición si colisiona con bloques aleatorios
+      for (const bloque of sala.bloquesAleatorios) {
+        // Transformar la posición del jugador al sistema local del bloque
+        const cos = Math.cos(-bloque.angle);
+        const sin = Math.sin(-bloque.angle);
+        const relX = player.x - bloque.x;
+        const relY = player.y - bloque.y;
+        const localX = relX * cos - relY * sin;
+        const localY = relX * sin + relY * cos;
+        const rx = bloque.width / 2 + 32; // ancho del bloque / 2 + radio del player
+        const ry = bloque.height / 2 + 32;
+        if (Math.abs(localX) <= rx && Math.abs(localY) <= ry) {
+          // Empujar al jugador fuera del bloque
+          let normX = localX / rx;
+          let normY = localY / ry;
+          const normLen = Math.sqrt(normX * normX + normY * normY) || 1;
+          normX /= normLen;
+          normY /= normLen;
+          // Mover 100 unidades fuera del bloque
+          const pushDist = 100;
+          const newLocalX = localX + normX * pushDist;
+          const newLocalY = localY + normY * pushDist;
+          // Transformar de vuelta a coordenadas globales
+          const globalX = bloque.x + newLocalX * cos + newLocalY * sin;
+          const globalY = bloque.y - newLocalX * sin + newLocalY * cos;
+          player.x = globalX;
+          player.y = globalY;
+          adjusted = true;
         }
       }
       if (!adjusted) break;
@@ -674,6 +815,44 @@ const muddyGroundsPorSala = {}; // Suelos fangosos por sala
 const murosPorSala = {}; // Muros de piedra por sala
 const sacredGroundsPorSala = {}; // Suelos sagrados por sala
 
+// Función para verificar colisión en una posición dada y devolver el obstáculo que colisiona
+function checkCollision(x, y, sala) {
+  // Verificar colisión con muros de piedra
+  if (murosPorSala[sala.id]) {
+    for (const muro of murosPorSala[sala.id]) {
+      const mejora = MEJORAS.find(m => m.id === 'muro_piedra');
+      if (mejora && mejora.colision) {
+        const cos = Math.cos(-muro.angle);
+        const sin = Math.sin(-muro.angle);
+        const relX = x - muro.x;
+        const relY = y - muro.y;
+        const localX = relX * cos - relY * sin;
+        const localY = relX * sin + relY * cos;
+        const rx = muro.width + 32;
+        const ry = muro.height + 32;
+        if ((localX * localX) / (rx * rx) + (localY * localY) / (ry * ry) <= 1) {
+          return muro; // Devolver el muro que colisiona
+        }
+      }
+    }
+  }
+  // Verificar colisión con bloques aleatorios
+  for (const bloque of sala.bloquesAleatorios) {
+    const cos = Math.cos(-bloque.angle);
+    const sin = Math.sin(-bloque.angle);
+    const relX = x - bloque.x;
+    const relY = y - bloque.y;
+    const localX = relX * cos - relY * sin;
+    const localY = relX * sin + relY * cos;
+    const rx = bloque.width / 2 + 32;
+    const ry = bloque.height / 2 + 32;
+    if (Math.abs(localX) <= rx && Math.abs(localY) <= ry) {
+      return bloque; // Devolver el bloque que colisiona
+    }
+  }
+  return null; // No colisiona
+}
+
 // Loop global de movimiento server-authoritative (procesa keyStates y emite playerMoved)
 setInterval(() => {
   // Procesar cada sala activa
@@ -692,31 +871,36 @@ setInterval(() => {
         dx /= length;
         dy /= length;
         const moveDistance = (player.speed || DEFAULT_SPEED) * (12 / 16);
-        let newX = (typeof player.x === 'number' ? player.x : 1000) + dx * moveDistance;
-        let newY = (typeof player.y === 'number' ? player.y : 600) + dy * moveDistance;
-        newX = Math.max(0, Math.min(2500, newX));
-        newY = Math.max(0, Math.min(1500, newY));
-        let puedeMover = true;
-        if (murosPorSala[sala.id]) {
-          for (const muro of murosPorSala[sala.id]) {
-            const mejora = MEJORAS.find(m => m.id === 'muro_piedra');
-            if (mejora && mejora.colision) {
-              const cos = Math.cos(-muro.angle);
-              const sin = Math.sin(-muro.angle);
-              const relX = newX - muro.x;
-              const relY = newY - muro.y;
-              const localX = relX * cos - relY * sin;
-              const localY = relX * sin + relY * cos;
-              const rx = muro.width + 32;
-              const ry = muro.height + 32;
-              if ((localX * localX) / (rx * rx) + (localY * localY) / (ry * ry) <= 1) {
-                puedeMover = false;
-                break;
-              }
-            }
+        let tempX = (typeof player.x === 'number' ? player.x : 1000) + dx * moveDistance;
+        let tempY = (typeof player.y === 'number' ? player.y : 600) + dy * moveDistance;
+        // Clamp to map boundaries
+        tempX = Math.max(0, Math.min(2500, tempX));
+        tempY = Math.max(0, Math.min(1500, tempY));
+        // Implement sliding along the surface
+        let collidesWith = checkCollision(tempX, tempY, sala);
+        let newX, newY;
+        if (collidesWith) {
+          // Proyectar el movimiento sobre la tangente del obstáculo
+          let tangenteX = Math.cos(collidesWith.angle);
+          let tangenteY = Math.sin(collidesWith.angle);
+          let dot = dx * tangenteX + dy * tangenteY;
+          let newDx = dot * tangenteX;
+          let newDy = dot * tangenteY;
+          // Mover en la dirección proyectada
+          newX = player.x + newDx * moveDistance;
+          newY = player.y + newDy * moveDistance;
+          // Verificar si la nueva posición colisiona, si sí, no mover
+          if (checkCollision(newX, newY, sala)) {
+            newX = player.x;
+            newY = player.y;
           }
+        } else {
+          // No colisiona, mover completo
+          newX = tempX;
+          newY = tempY;
         }
-        if (puedeMover) {
+        // Update position if changed
+        if (newX !== player.x || newY !== player.y) {
           player.x = newX;
           player.y = newY;
           anyChange = true;
@@ -741,6 +925,31 @@ function getDanioMejora(mejoraId, ownerNick = null, sala = null) {
       baseDanio += player.electricDamageBonus;
     }
   }
+  // Si el owner tiene 'explosion_sabor' y la mejora es proyectil o proyectilQ, reducir daño según el efecto
+  if (ownerNick && sala) {
+    const player = sala.players.find(pl => pl.nick === ownerNick);
+    if (player && player.mejoras) {
+      const saborMejora = player.mejoras.find(m => m.id === 'explosion_sabor');
+      if (saborMejora) {
+        const mejoraSabor = MEJORAS.find(m => m.id === 'explosion_sabor');
+        const damageReduction = mejoraSabor && mejoraSabor.efecto && typeof mejoraSabor.efecto.damageReduction === 'number' ? mejoraSabor.efecto.damageReduction : 0.3;
+        if (mejora && (mejora.proyectil || mejora.proyectilQ)) {
+          baseDanio = Math.floor(baseDanio * (1 - damageReduction));
+        }
+      }
+      // Si el owner tiene 'dividor' y la mejora es proyectil, reducir daño flat por stack
+      const dividorMejora = player.mejoras.find(m => m.id === 'dividor');
+      if (dividorMejora) {
+        const mejoraDividor = MEJORAS.find(m => m.id === 'dividor');
+        const damageReductionFlat = mejoraDividor && mejoraDividor.efecto && typeof mejoraDividor.efecto.damageReductionFlat === 'number' ? mejoraDividor.efecto.damageReductionFlat : 3;
+        const dividorStacks = player.mejoras.filter(m => m.id === 'dividor').length;
+        if (mejora && mejora.proyectil) {
+          baseDanio -= damageReductionFlat * dividorStacks;
+          baseDanio = Math.max(0, baseDanio); // no negativo
+        }
+      }
+    }
+  }
   return baseDanio;
 }
 
@@ -752,11 +961,26 @@ function getEffectMejora(mejoraId) {
 
 // Función para aplicar daño considerando escudo
 function applyDamage(player, damage, io, salaId, type = 'hit') {
+  let absorbed = 0;
   if (player.shieldAmount > 0) {
-    const absorbed = Math.min(damage, player.shieldAmount);
+    absorbed = Math.min(damage, player.shieldAmount);
     damage -= absorbed;
     player.shieldAmount -= absorbed;
     io.to(salaId).emit('shieldDamage', { nick: player.nick, absorbed });
+    // Damage reflection if has dano_escudo and not already a reflection
+    if (type !== 'reflection' && player.mejoras && absorbed > 0) {
+      const danoEscudoCount = player.mejoras.filter(m => m.id === 'dano_escudo').length;
+      if (danoEscudoCount > 0 && player.lastAttacker) {
+        const sala = salas.find(s => s.id === salaId);
+        if (sala) {
+          const attacker = sala.players.find(p => p.nick === player.lastAttacker);
+          if (attacker && attacker !== player) {
+            const reflectionDamage = Math.floor(absorbed * 0.5);
+            applyDamage(attacker, reflectionDamage, io, salaId, 'reflection');
+          }
+        }
+      }
+    }
   }
   player.health = Math.max(0, player.health - damage);
   io.to(salaId).emit('damageEvent', { target: player.nick, amount: damage, type });
@@ -765,12 +989,26 @@ function applyDamage(player, damage, io, salaId, type = 'hit') {
 // Función para manejar explosión de proyectil
 function handleExplosion(sala, proyectil, io) {
   const mejora = MEJORAS.find(m => m.id === proyectil.mejoraId);
-  if (!mejora || !mejora.explosionDamage) return;
+  if (!mejora) return;
 
-  const explosionRadius = mejora.explosionRadius || 80;
-  const explosionDamage = mejora.explosionDamage;
+  // Buscar jugador owner
+  const player = sala.players.find(p => p.nick === proyectil.owner);
+  let explosionRadius = mejora.explosionRadius || 80;
+  // Si no tiene explosionDamage, usar el daño base del proyectil (incluyendo bonuses)
+  let explosionDamage = (typeof mejora.explosionDamage === 'number') ? mejora.explosionDamage : getDanioMejora(mejora.id, proyectil.owner, sala);
 
-  // Aplicar daño a todos los jugadores en el radio, excepto el owner
+  // Si el owner tiene el aumento 'explosion_sabor', sumar el bonus por stack
+  if (player && player.mejoras) {
+    const saborStacks = player.mejoras.filter(m => m.id === 'explosion_sabor').length;
+    if (saborStacks > 0) {
+      // Si la mejora tiene explosionRadiusBonus, usar ese valor, si no, usar 40 por stack
+      const saborMejora = MEJORAS.find(m => m.id === 'explosion_sabor');
+      const bonus = (saborMejora && saborMejora.efecto && saborMejora.efecto.explosionRadiusBonus) ? saborMejora.efecto.explosionRadiusBonus : 40;
+      explosionRadius += saborStacks * bonus;
+    }
+  }
+
+  // Aplicar daño y pasiva a todos los jugadores en el radio, excepto el owner
   for (const jugador of sala.players) {
     if (jugador.nick === proyectil.owner || jugador.defeated) continue;
 
@@ -779,8 +1017,8 @@ function handleExplosion(sala, proyectil, io) {
     const dist = Math.sqrt(dx * dx + dy * dy);
 
     if (dist <= explosionRadius) {
-  jugador.lastAttacker = proyectil.owner;
-  applyDamage(jugador, explosionDamage, io, sala.id, 'explosion');
+      jugador.lastAttacker = proyectil.owner;
+      applyDamage(jugador, explosionDamage, io, sala.id, 'explosion');
       // Aplicar efecto de la mejora si existe
       const effect = getEffectMejora(proyectil.mejoraId);
       if (effect) {
@@ -795,7 +1033,7 @@ function handleExplosion(sala, proyectil, io) {
         } else if (effect.type === 'dot') {
           jugador.dotUntil = now + (effect.duration || 3000);
           jugador.dotDamage = effect.damage || 2;
-          jugador.dotType = 'fire';
+          jugador.dotType = effect.dotType || 'fire';
           jugador.lastDotTime = now;
         } else if (effect.type === 'stackingDot') {
           if (jugador.dotUntil > now) {
@@ -804,8 +1042,39 @@ function handleExplosion(sala, proyectil, io) {
             jugador.dotDamage = effect.damage;
           }
           jugador.dotUntil = now + (effect.duration || 6000);
-          jugador.dotType = 'poison';
+          jugador.dotType = effect.dotType || 'poison';
           jugador.lastDotTime = now;
+        }
+      }
+      // Aplicar pasiva especial (onHit) si existe
+      if (mejora.onHit) {
+        const portador = sala.players.find(pl => pl.nick === proyectil.owner);
+        if (portador) {
+          if (mejora.onHit.type === 'speedStack') {
+            if (typeof portador.electricStacks !== 'number') portador.electricStacks = 0;
+            if (typeof portador.electricSpeedBonus !== 'number') portador.electricSpeedBonus = 0;
+            if (typeof portador.lastElectricStackTime !== 'number') portador.lastElectricStackTime = 0;
+            if (portador.electricStacks < mejora.onHit.maxStacks) {
+              portador.electricStacks++;
+              portador.electricSpeedBonus += mejora.onHit.amount;
+              portador.speed = DEFAULT_SPEED + portador.electricSpeedBonus;
+            }
+            portador.lastElectricStackTime = Date.now();
+            io.to(sala.id).emit('electricStackUpdate', {
+              nick: portador.nick,
+              electricStacks: portador.electricStacks,
+              speed: portador.speed
+            });
+          } else if (mejora.onHit.type === 'damageStack') {
+            if (typeof portador.electricDamageBonus !== 'number') portador.electricDamageBonus = 0;
+            // Por cada jugador dañado por la explosión, aumentar el daño Y el daño de la explosión para el siguiente jugador
+            portador.electricDamageBonus += mejora.onHit.amount;
+            explosionDamage += mejora.onHit.amount;
+            io.to(sala.id).emit('electricDamageUpdate', {
+              nick: portador.nick,
+              electricDamageBonus: portador.electricDamageBonus
+            });
+          }
         }
       }
     }
@@ -832,7 +1101,7 @@ setInterval(() => {
     const now = Date.now();
     // Inicializar vida si no existe
     for (const jugador of jugadores) {
-      if (typeof jugador.health !== 'number') jugador.health = 100;
+      if (typeof jugador.health !== 'number') jugador.health = 200;
       if (typeof jugador.speed !== 'number') jugador.speed = DEFAULT_SPEED;
       if (typeof jugador.slowUntil !== 'number') jugador.slowUntil = 0;
       if (typeof jugador.speedBoostUntil !== 'number') jugador.speedBoostUntil = 0;
@@ -874,7 +1143,7 @@ setInterval(() => {
           if (dist <= ground.radius + 32) {
             // Curar cada segundo
             if (!ground.lastHealTime || now - ground.lastHealTime >= ground.healInterval) {
-              jugador.health = Math.min(100, jugador.health + ground.healAmount);
+              jugador.health = Math.min(200, jugador.health + ground.healAmount);
               ground.lastHealTime = now;
               io.to(sala.id).emit('healEvent', { target: jugador.nick, amount: ground.healAmount, type: 'suelo_sagrado' });
             }
@@ -894,6 +1163,11 @@ setInterval(() => {
       // Rebote en muros exteriores
       let reboteStacks = 0;
       const mejoraProyectil = MEJORAS.find(m => m.id === p.mejoraId);
+      // Destruir si supera maxRange
+      if (mejoraProyectil && mejoraProyectil.maxRange && p.startX !== undefined && p.startY !== undefined) {
+        const distRecorrida = Math.sqrt((p.x - p.startX)**2 + (p.y - p.startY)**2);
+        if (distRecorrida > mejoraProyectil.maxRange) destroy = true;
+      }
       // Solo proyectiles con proyectil: true
       if (mejoraProyectil && mejoraProyectil.proyectil === true) {
         const player = sala.players.find(pl => pl.nick === p.owner);
@@ -967,6 +1241,43 @@ setInterval(() => {
           break;
         }
       }
+      // Rebote en bloques aleatorios
+      for (const bloque of sala.bloquesAleatorios) {
+        const cos = Math.cos(-bloque.angle);
+        const sin = Math.sin(-bloque.angle);
+        const relX = p.x - bloque.x;
+        const relY = p.y - bloque.y;
+        const localX = relX * cos - relY * sin;
+        const localY = relX * sin + relY * cos;
+        const rx = bloque.width / 2 + (p.radius || 16);
+        const ry = bloque.height / 2 + (p.radius || 16);
+        if (reboteStacks > 0 && p.rebotes < reboteStacks && Math.abs(localX) <= rx && Math.abs(localY) <= ry) {
+          // Rebote en bloque
+          const normalAngle = bloque.angle;
+          p.angle = 2 * normalAngle - p.angle;
+          p.rebotes = (p.rebotes || 0) + 1;
+          p.lifetime = 0;
+          const mejora = MEJORAS.find(m => m.id === p.mejoraId);
+          const range = mejora?.maxRange || 200;
+          p.targetX = p.x + Math.cos(p.angle) * range;
+          p.targetY = p.y + Math.sin(p.angle) * range;
+          reboteado = true;
+          break;
+        } else if ((localX * localX) / (rx * rx) + (localY * localY) / (ry * ry) <= 1) {
+          // Colisión normal (sin rebote)
+          const mejora = MEJORAS.find(m => m.id === p.mejoraId);
+          if (p.mejoraId === 'meteoro') {
+            p.hasHit = true;
+            handleExplosion(sala, p, io);
+          }
+          if (p.mejoraId === 'cuchilla_fria') {
+            destroy = true;
+            break;
+          }
+          destroy = true;
+          break;
+        }
+      }
       // Si supera los rebotes permitidos, destruir si sale del mapa
       if (!reboteado && (p.x < 0 || p.x > 2500 || p.y < 0 || p.y > 1500)) {
         destroy = true;
@@ -1000,8 +1311,8 @@ setInterval(() => {
                 x: p.targetX,
                 y: p.targetY,
                 radius: p.radius * 1.57, // Ajustar al radio agrandado
-                slowAmount: 0.2,
-                duration: 4000,
+                slowAmount: 0.4, // 40% slow
+                duration: 3000, // 2 segundos
                 createdAt: Date.now()
               });
               // Emit to frontend to draw the muddy ground
@@ -1030,6 +1341,8 @@ setInterval(() => {
                   id: ++projectileIdCounter,
                   x: p.x,
                   y: p.y,
+                  startX: p.x,
+                  startY: p.y,
                   angle: ang,
                   velocidad: 13, // Menor velocidad
                   mejoraId: 'cuchilla_fria_menor',
@@ -1052,6 +1365,15 @@ setInterval(() => {
         // Si es meteoro y no ha impactado, hacer explosión
         if (p.mejoraId === 'meteoro' && !p.hasHit) {
           handleExplosion(sala, p, io);
+        }
+        // Si el proyectil no tiene daño en área pero el jugador tiene 'explosion_sabor', crear explosión
+        const player = sala.players.find(pl => pl.nick === p.owner);
+        if (player && player.mejoras && player.mejoras.some(m => m.id === 'explosion_sabor')) {
+          const mejora = MEJORAS.find(m => m.id === p.mejoraId);
+          // Solo si no tiene explosionDamage definido
+          if (!mejora || !mejora.explosionDamage) {
+            handleExplosion(sala, p, io);
+          }
         }
         proyectiles.splice(i, 1);
         continue;
@@ -1108,6 +1430,8 @@ setInterval(() => {
                 id: ++projectileIdCounter,
                 x: baseX,
                 y: baseY,
+                startX: baseX,
+                startY: baseY,
                 angle: ang,
                 velocidad: 13,
                 mejoraId: 'cuchilla_fria_menor',
@@ -1163,35 +1487,6 @@ setInterval(() => {
                 }
               }
             }
-            // Aplicar efecto si existe
-            const effect = getEffectMejora(p.mejoraId);
-            if (effect) {
-              if (effect.type === 'slow') {
-                // Si ya está ralentizado, refrescar el tiempo; sino, aplicar el slow
-                if (jugador.slowUntil > Date.now()) {
-                  jugador.slowUntil = Date.now() + (effect.duration || 1000);
-                } else {
-                  jugador.speed = Math.max(0, DEFAULT_SPEED - effect.amount);
-                  jugador.slowUntil = Date.now() + (effect.duration || 1000);
-                }
-              } else if (effect.type === 'dot') {
-                jugador.dotUntil = Date.now() + (effect.duration || 3000);
-                jugador.dotDamage = effect.damage || 2;
-                jugador.dotType = 'fire';
-                jugador.lastDotTime = Date.now();
-              } else if (effect.type === 'stackingDot') {
-                if (jugador.dotUntil > Date.now()) {
-                  // Ya tiene dot, stackear
-                  jugador.dotDamage += effect.damage;
-                } else {
-                  // Nuevo dot
-                  jugador.dotDamage = effect.damage;
-                }
-                jugador.dotUntil = Date.now() + (effect.duration || 6000);
-                jugador.dotType = 'poison';
-                jugador.lastDotTime = Date.now();
-              }
-            }
           }
           proyectiles.splice(i, 1);
           break;
@@ -1222,7 +1517,7 @@ setInterval(() => {
         }
       }
       if (inMuddy) {
-        jugador.speed = Math.max(0, DEFAULT_SPEED * (1 - 0.2)); // 20% slow
+  jugador.speed = Math.max(0, DEFAULT_SPEED * (1 - 0.4)); // 40% slow
       } else if (!jugador.slowUntil && !jugador.speedBoostUntil) {
         // If not in muddy and no slowUntil and no speedBoostUntil, ensure speed is DEFAULT
         jugador.speed = DEFAULT_SPEED;
@@ -1272,6 +1567,7 @@ setInterval(() => {
               if (edist <= collisionRadius) {
                 enemy.lastAttacker = player.nick;
                 applyDamage(enemy, 20, io, sala.id, 'embestida');
+               
                 const pushDist = 130;
                 const pushX = ex / edist * pushDist;
                 const pushY = ey / edist * pushDist;
@@ -1378,7 +1674,7 @@ setInterval(() => {
     if (vivos.length === 1 && jugadores.length > 1) {
       // Fin de ronda: reiniciar todos los jugadores
       for (const jugador of jugadores) {
-        jugador.health = 100;
+        jugador.health = 200;
         jugador.defeated = false;
         // Mantener mejoras, pero puedes reiniciar posición aquí si lo deseas
       }
@@ -1420,12 +1716,14 @@ setInterval(() => {
         player.electricDamageBonus = 0; // Resetear bonus de daño eléctrico
       });
       // Notificar a los clientes que la ronda terminó y se reinicia
-      io.to(sala.id).emit('roundEnded', { winner: vivos[0].nick });
+      io.to(sala.id).emit('roundEnded', { winner: vivos[0].nick, bloques: sala.bloquesAleatorios });
       // Increment victories for the winner
       const winner = sala.players.find(p => p.nick === vivos[0].nick);
       if (winner) winner.victories = (winner.victories || 0) + 1;
       // Avanzar la ronda de la sala
       sala.round = (sala.round || 1) + 1;
+      // Regenerar bloques aleatorios para la nueva ronda
+      sala.bloquesAleatorios = generarBloquesAleatorios(sala.players);
       if (sala.round > 7) {
         // Fin del juego después de 7 rondas
         // Determinar el ganador: el que tiene más victorias
@@ -1459,36 +1757,22 @@ setInterval(() => {
         io.to(sala.id).emit('gameEnded', { stats: finalStats, winner: winnerNick });
       } else {
         io.to(sala.id).emit('gameStarted', sala);
-        // Si es ronda 2, enviar upgrades aleatorias de proyectilQ
-        if (sala.round === 2) {
-          const proyectilQMejoras = MEJORAS.filter(m => m.proyectilQ);
+        // De la ronda 2 a la 7, mostrar solo aumentos
+        if (sala.round >= 2 && sala.round <= 7) {
+          const aumentoMejoras = MEJORAS.filter(m => m.aumento);
           function shuffle(array) {
             return array.sort(() => Math.random() - 0.5);
           }
           for (const player of sala.players) {
-            const selectedUpgrades = shuffle([...proyectilQMejoras]).slice(0, 3);
-            io.to(sala.id).emit('availableUpgrades', { nick: player.nick, upgrades: selectedUpgrades });
-          }
-        }
-        // Si es ronda 3, enviar upgrades de proyectilE
-        if (sala.round === 3) {
-          const proyectilEMejoras = MEJORAS.filter(m => m.proyectilE);
-          function shuffle(array) {
-            return array.sort(() => Math.random() - 0.5);
-          }
-          for (const player of sala.players) {
-            const selectedUpgrades = shuffle([...proyectilEMejoras]).slice(0, 3);
-            io.to(sala.id).emit('availableUpgrades', { nick: player.nick, upgrades: selectedUpgrades });
-          }
-        }
-        // Si es ronda 4, enviar upgrades de proyectilEspacio
-        if (sala.round === 4) {
-          const proyectilEspacioMejoras = MEJORAS.filter(m => m.proyectilEspacio);
-          function shuffle(array) {
-            return array.sort(() => Math.random() - 0.5);
-          }
-          for (const player of sala.players) {
-            const selectedUpgrades = shuffle([...proyectilEspacioMejoras]).slice(0, 3);
+            // Filtrar 'daño escudo' si ya fue seleccionado
+            const selectedUpgrades = shuffle([
+              ...aumentoMejoras.filter(m => {
+                if (m.id === 'dano_escudo') {
+                  return !player.mejoras.some(pm => pm.id === 'dano_escudo');
+                }
+                return !player.mejoras.some(pm => pm.id === m.id);
+              })
+            ]).slice(0, 3);
             io.to(sala.id).emit('availableUpgrades', { nick: player.nick, upgrades: selectedUpgrades });
           }
         }
