@@ -20,6 +20,33 @@
     <div class="particle"></div>
   </div>
 
+  <!-- Botón flotante de Ranking -->
+  <button class="ranking-float-btn" id="rankingFloatBtn" title="Ver Ranking Global">
+    <img src="iconos/ranking.png" alt="Ranking">
+  </button>
+
+  <!-- Panel de jugadores activos (izquierda) -->
+  <div class="active-players-panel">
+    <div class="active-players-header">
+      <div class="active-players-icon">
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"></path>
+          <circle cx="9" cy="7" r="4"></circle>
+          <path d="M23 21v-2a4 4 0 0 0-3-3.87"></path>
+          <path d="M16 3.13a4 4 0 0 1 0 7.75"></path>
+        </svg>
+      </div>
+      <h3>Jugadores Activos</h3>
+      <span class="active-count" id="activeCount">0</span>
+    </div>
+    <div class="active-players-list" id="activePlayersList">
+      <div class="loading-players">
+        <div class="spinner"></div>
+        <p>Cargando jugadores...</p>
+      </div>
+    </div>
+  </div>
+
   <div class="menu-container">
     <!-- Header del menú con logo -->
     <div class="menu-header">
@@ -35,7 +62,14 @@
       <div class="player-info">
         <div class="player-rank-img" id="playerRankImg"></div>
         <div class="player-details">
-          <div class="player-name" id="playerName">Cargando...</div>
+          <div class="player-name-container">
+            <div class="player-name" id="playerName">Cargando...</div>
+            <button class="edit-nickname-btn" id="editNicknameBtn" title="Cambiar nombre">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <path d="M17 3a2.828 2.828 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5L17 3z"></path>
+              </svg>
+            </button>
+          </div>
           <div class="player-stats-mini">
             <div class="stat-mini">
               <span class="stat-icon">⚡</span>
@@ -46,6 +80,11 @@
               <span class="stat-icon">🏆</span>
               <span class="stat-value" id="playerVictories">0</span>
               <span class="stat-label">Victorias</span>
+            </div>
+            <div class="stat-mini">
+              <span class="stat-icon"><img src="iconos/oro.png" alt="Oro" style="width: 20px; height: 20px; vertical-align: middle;"></span>
+              <span class="stat-value" id="playerGold">0</span>
+              <span class="stat-label">Oro</span>
             </div>
           </div>
         </div>
@@ -65,6 +104,22 @@
         <div class="btn-content">
           <span class="btn-title">ESTADÍSTICAS</span>
           <span class="btn-subtitle">Ver tu progreso</span>
+        </div>
+        <div class="btn-arrow">→</div>
+      </button>
+
+      <button id="matchmaking1v1Btn" class="action-btn matchmaking-btn">
+        <div class="btn-icon">
+          <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"></path>
+            <circle cx="9" cy="7" r="4"></circle>
+            <line x1="17" y1="8" x2="23" y2="14"></line>
+            <line x1="23" y1="8" x2="17" y2="14"></line>
+          </svg>
+        </div>
+        <div class="btn-content">
+          <span class="btn-title">1 VS 1</span>
+          <span class="btn-subtitle">Duelo competitivo</span>
         </div>
         <div class="btn-arrow">→</div>
       </button>
@@ -99,6 +154,21 @@
         <div class="btn-arrow">→</div>
       </button>
 
+      <button id="shopBtn" class="action-btn shop-btn">
+        <div class="btn-icon">
+          <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <circle cx="9" cy="21" r="1"></circle>
+            <circle cx="20" cy="21" r="1"></circle>
+            <path d="M1 1h4l2.68 13.39a2 2 0 0 0 2 1.61h9.72a2 2 0 0 0 2-1.61L23 6H6"></path>
+          </svg>
+        </div>
+        <div class="btn-content">
+          <span class="btn-title">TIENDA</span>
+          <span class="btn-subtitle">Compra mejoras</span>
+        </div>
+        <div class="btn-arrow">→</div>
+      </button>
+
       <button id="logoutBtn" class="action-btn logout-btn">
         <div class="btn-icon">
           <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
@@ -116,6 +186,180 @@
     </div>
   </div>
 
+  <!-- Modal para cambiar el nickname -->
+  <div class="modal-overlay" id="nicknameModalOverlay">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h2>Cambiar Nombre</h2>
+        <button class="modal-close-btn" id="closeNicknameModal">×</button>
+      </div>
+      <div class="modal-body">
+        <p class="modal-info">Puedes cambiar tu nombre <strong>solo una vez</strong>. ¡Elige bien!</p>
+        <div class="input-group">
+          <label for="newNicknameInput">Nuevo nombre:</label>
+          <input type="text" id="newNicknameInput" placeholder="Ingresa tu nuevo nombre" maxlength="20" minlength="3">
+          <span class="input-hint">Entre 3 y 20 caracteres</span>
+        </div>
+        <div class="modal-error" id="nicknameError"></div>
+      </div>
+      <div class="modal-footer">
+        <button class="modal-btn cancel-btn" id="cancelNicknameBtn">Cancelar</button>
+        <button class="modal-btn confirm-btn" id="confirmNicknameBtn">Confirmar</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Modal de Ranking Global -->
+  <div class="modal-overlay" id="rankingModalOverlay">
+    <div class="ranking-modal-new">
+      <div class="ranking-header-new">
+        <div class="ranking-title-new">
+          <img src="iconos/ranking.png" alt="Ranking" class="ranking-icon-new">
+          <div>
+            <h2>Ranking Global</h2>
+            <p>Top 100 Mejores Jugadores</p>
+          </div>
+        </div>
+        <button class="modal-close-btn-new" id="closeRankingModal">×</button>
+      </div>
+      
+      <div class="ranking-content-new">
+        <div class="ranking-loading" id="rankingLoading">
+          <div class="spinner"></div>
+          <p>Cargando ranking...</p>
+        </div>
+        
+        <div class="ranking-list-new" id="rankingTableContainer" style="display: none;">
+          <div id="rankingListBody">
+            <!-- Los datos se cargarán dinámicamente aquí -->
+          </div>
+        </div>
+        
+        <div class="ranking-error" id="rankingError" style="display: none;">
+          <p>Error al cargar el ranking. Intenta de nuevo.</p>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Modal de Tienda -->
+  <div class="modal-overlay" id="shopModalOverlay">
+    <div class="shop-modal">
+      <div class="shop-header">
+        <h2>🛒 Tienda de Personalización</h2>
+        <button class="modal-close-btn" id="closeShopModal">×</button>
+      </div>
+      
+      <div class="shop-container">
+        <!-- Previsualización del personaje -->
+        <div class="shop-preview">
+          <h3>Vista Previa</h3>
+          <div class="preview-character">
+            <canvas id="characterPreviewCanvas" width="200" height="200"></canvas>
+          </div>
+          <div class="preview-info">
+            <p><strong>Color:</strong> <span id="previewColorName">Por defecto</span></p>
+            <p><strong>Sombrero:</strong> <span id="previewHatName">Ninguno</span></p>
+            <p><strong>Arma:</strong> <span id="previewWeaponName">Ninguna</span></p>
+            <p><strong>Tumba:</strong> <span id="previewTombName">Por defecto</span></p>
+          </div>
+        </div>
+
+        <!-- Secciones de la tienda -->
+        <div class="shop-content">
+          <!-- Tabs de categorías -->
+          <div class="shop-tabs">
+            <button class="shop-tab active" data-category="personaje">
+              <span class="tab-icon">🎨</span>
+              <span>Personaje</span>
+            </button>
+            <button class="shop-tab" data-category="sombrero">
+              <span class="tab-icon">🎩</span>
+              <span>Sombrero</span>
+            </button>
+            <button class="shop-tab" data-category="arma">
+              <span class="tab-icon">⚔️</span>
+              <span>Arma</span>
+            </button>
+            <button class="shop-tab" data-category="tumbas">
+              <span class="tab-icon">🪦</span>
+              <span>Tumbas</span>
+            </button>
+          </div>
+
+          <!-- Items de cada categoría -->
+          <div class="shop-items-container">
+            <!-- Categoría: Personaje -->
+            <div class="shop-items active" data-category="personaje">
+              <div class="shop-item" data-item-id="color-blue" data-price="100">
+                <div class="item-preview">
+                  <div class="item-color-circle" style="background: #4A90E2;"></div>
+                </div>
+                <div class="item-info">
+                  <h4>Color Azul</h4>
+                  <p class="item-stats">❤️ +5 Vida</p>
+                  <p class="item-price">💰 100 Oro</p>
+                </div>
+                <button class="item-buy-btn">Comprar</button>
+              </div>
+
+              <div class="shop-item" data-item-id="color-red" data-price="100">
+                <div class="item-preview">
+                  <div class="item-color-circle" style="background: #E74C3C;"></div>
+                </div>
+                <div class="item-info">
+                  <h4>Color Rojo</h4>
+                  <p class="item-stats">⚔️ +1 Daño</p>
+                  <p class="item-price">💰 100 Oro</p>
+                </div>
+                <button class="item-buy-btn">Comprar</button>
+              </div>
+
+              <div class="shop-item" data-item-id="color-green" data-price="100">
+                <div class="item-preview">
+                  <div class="item-color-circle" style="background: #2ECC71;"></div>
+                </div>
+                <div class="item-info">
+                  <h4>Color Verde</h4>
+                  <p class="item-stats">🏃 +0.3 Velocidad</p>
+                  <p class="item-price">💰 100 Oro</p>
+                </div>
+                <button class="item-buy-btn">Comprar</button>
+              </div>
+            </div>
+
+            <!-- Categoría: Sombrero -->
+            <div class="shop-items" data-category="sombrero">
+              <div class="empty-category">
+                <p>🎩</p>
+                <p>Próximamente...</p>
+              </div>
+            </div>
+
+            <!-- Categoría: Arma -->
+            <div class="shop-items" data-category="arma">
+              <div class="empty-category">
+                <p>⚔️</p>
+                <p>Próximamente...</p>
+              </div>
+            </div>
+
+            <!-- Categoría: Tumbas -->
+            <div class="shop-items" data-category="tumbas">
+              <div class="empty-category">
+                <p>🪦</p>
+                <p>Próximamente...</p>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script src="/socket.io/socket.io.js"></script>
+  <script src="tienda.js"></script>
   <script src="menu.js"></script>
 </body>
 </html>
+

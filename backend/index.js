@@ -8,6 +8,7 @@ import path from 'path';
 import { fileURLToPath } from 'url';
 import { Player } from '../frontend/players.js';
 import { MEJORAS } from './mejoras.shared.js';
+import { generarBloquesPorRonda } from './procedural.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
@@ -18,7 +19,40 @@ app.use(express.static(path.join(__dirname, '../frontend')));
 app.get('/', (req, res) => {
   res.send('Backend funcionando');
 });
-// const db = new sqlite3.Database('users.db');
+
+// ============================================
+// INICIALIZAR BASE DE DATOS
+// ============================================
+const db = new sqlite3.Database('users.db');
+
+// Agregar columnas inventory y equipped si no existen
+db.serialize(() => {
+  // Verificar si las columnas existen y agregarlas si no
+  db.all("PRAGMA table_info(users)", (err, columns) => {
+    if (err) {
+      console.error('Error al verificar estructura de tabla:', err);
+      return;
+    }
+    
+    const hasInventory = columns.some(col => col.name === 'inventory');
+    const hasEquipped = columns.some(col => col.name === 'equipped');
+    
+    if (!hasInventory) {
+      db.run("ALTER TABLE users ADD COLUMN inventory TEXT DEFAULT '{}'", (err) => {
+        if (err) console.error('Error al agregar columna inventory:', err);
+        else console.log('✅ Columna inventory agregada');
+      });
+    }
+    
+    if (!hasEquipped) {
+      db.run("ALTER TABLE users ADD COLUMN equipped TEXT DEFAULT '{}'", (err) => {
+        if (err) console.error('Error al agregar columna equipped:', err);
+        else console.log('✅ Columna equipped agregada');
+      });
+    }
+  });
+});
+
 const port = 3000;
 const DEFAULT_SPEED = 5;
 // Contador para IDs de proyectiles
@@ -52,53 +86,149 @@ const io = new Server(server, {
   }
 });
 
-// Función para generar bloques aleatorios
-function generarBloquesAleatorios(players) {
-  const bloques = [];
-  const numBloques = 12;
-  const MAP_WIDTH = 2500;
-  const MAP_HEIGHT = 1500;
+// Almacenar jugadores conectados al menú (no en salas)
+const playersOnline = new Map(); // { nick: { nivel, lastSeen, socketId } }
 
-  for (let i = 0; i < numBloques; i++) {
-    let x, y;
-    let attempts = 0;
-    const maxAttempts = 200; // Aumentar intentos
-
-    do {
-      x = Math.random() * (MAP_WIDTH - 400) + 200; // Evitar bordes
-      y = Math.random() * (MAP_HEIGHT - 400) + 200;
-      attempts++;
-      // Verificar distancia a jugadores
-      let tooClose = false;
-      for (const player of players) {
-        const dx = x - player.x;
-        const dy = y - player.y;
-        const dist = Math.sqrt(dx * dx + dy * dy);
-        if (dist < 200) { // Distancia mínima 200 para evitar bugs
-          tooClose = true;
-          break;
-        }
-      }
-      if (tooClose) continue;
-    } while (attempts < maxAttempts);
-
-    // Propiedades del bloque ovalado largo y grande
-    const bloque = {
-      x: x,
-      y: y,
-      width: 200 + Math.random() * 200, // Ancho entre 200-400
-      height: 60 + Math.random() * 40,  // Alto entre 60-100 (más largo)
-      angle: Math.random() * Math.PI * 2, // Ángulo aleatorio
-      color: '#000000' // Color negro para paredes
-    };
-
-    bloques.push(bloque);
-  }
-
-  return bloques;
-}
+// Sistema de matchmaking 1v1
+const matchmakingQueue = []; // Array de { nick, nivel, socketId, joinedAt }
+const pendingMatches = new Map(); // Map de matchId -> { player1, player2, confirmations, createdAt }
+let matchIdCounter = 0;
 
 io.on('connection', (socket) => {
+  console.log('Cliente conectado:', socket.id);
+  
+  // Evento para registrar jugador en el menú
+  socket.on('playerOnline', (data) => {
+    const { nick, nivel } = data;
+    playersOnline.set(nick, {
+      nivel: nivel || 1,
+      lastSeen: Date.now(),
+      socketId: socket.id
+    });
+    console.log(`Jugador ${nick} ahora está en línea. Total: ${playersOnline.size}`);
+    io.emit('onlinePlayersUpdate', Array.from(playersOnline.keys()).length);
+  });
+  
+  // Evento para mantener el jugador activo (heartbeat)
+  socket.on('playerHeartbeat', (data) => {
+    const { nick } = data;
+    if (playersOnline.has(nick)) {
+      playersOnline.get(nick).lastSeen = Date.now();
+    }
+  });
+  
+  // Cuando se desconecta
+  socket.on('disconnect', () => {
+    // Buscar y eliminar el jugador por socketId
+    for (const [nick, data] of playersOnline.entries()) {
+      if (data.socketId === socket.id) {
+        playersOnline.delete(nick);
+        console.log(`Jugador ${nick} se desconectó. Total: ${playersOnline.size}`);
+        io.emit('onlinePlayersUpdate', Array.from(playersOnline.keys()).length);
+        break;
+      }
+    }
+    
+    // Remover de la cola de matchmaking si estaba allí
+    const queueIndex = matchmakingQueue.findIndex(p => p.socketId === socket.id);
+    if (queueIndex !== -1) {
+      matchmakingQueue.splice(queueIndex, 1);
+    }
+  });
+  
+  // ============================================
+  // EVENTOS DE MATCHMAKING 1V1
+  // ============================================
+  
+  // Unirse a la cola de matchmaking
+  socket.on('joinMatchmakingQueue', async (data) => {
+    const { nick, nivel } = data;
+    
+    // Verificar que no esté ya en cola
+    if (matchmakingQueue.find(p => p.nick === nick)) {
+      socket.emit('alreadyInQueue');
+      return;
+    }
+    
+    // Agregar a la cola
+    matchmakingQueue.push({
+      nick,
+      nivel,
+      socketId: socket.id,
+      joinedAt: Date.now()
+    });
+    
+    console.log(`${nick} se unió a la cola de matchmaking. Cola: ${matchmakingQueue.length}`);
+    socket.emit('queueJoined', { position: matchmakingQueue.length });
+    
+    // Intentar hacer match inmediatamente
+    tryMatchmaking();
+  });
+  
+  // Salir de la cola de matchmaking
+  socket.on('leaveMatchmakingQueue', (data) => {
+    const { nick } = data;
+    const index = matchmakingQueue.findIndex(p => p.nick === nick);
+    
+    if (index !== -1) {
+      matchmakingQueue.splice(index, 1);
+      console.log(`${nick} salió de la cola. Cola: ${matchmakingQueue.length}`);
+      socket.emit('queueLeft');
+    }
+  });
+  
+  // Aceptar o rechazar match
+  socket.on('matchResponse', (data) => {
+    const { matchId, nick, accepted } = data;
+    const match = pendingMatches.get(matchId);
+    
+    if (!match) {
+      socket.emit('matchExpired');
+      return;
+    }
+    
+    // Registrar la respuesta
+    match.confirmations[nick] = accepted;
+    
+    console.log(`${nick} ${accepted ? 'aceptó' : 'rechazó'} el match ${matchId}`);
+    
+    // Verificar si ambos jugadores respondieron
+    const player1Responded = match.confirmations[match.player1.nick] !== undefined;
+    const player2Responded = match.confirmations[match.player2.nick] !== undefined;
+    
+    if (player1Responded && player2Responded) {
+      // Ambos respondieron
+      const bothAccepted = match.confirmations[match.player1.nick] && match.confirmations[match.player2.nick];
+      
+      if (bothAccepted) {
+        // Ambos aceptaron - crear sala 1v1
+        create1v1Room(match.player1, match.player2);
+      } else {
+        // Al menos uno rechazó - regresar a cola a quien aceptó
+        if (match.confirmations[match.player1.nick]) {
+          // Player1 aceptó, devolverlo a cola
+          matchmakingQueue.push(match.player1);
+          io.to(match.player1.socketId).emit('matchCancelled', { reason: 'opponent_declined' });
+        }
+        if (match.confirmations[match.player2.nick]) {
+          // Player2 aceptó, devolverlo a cola
+          matchmakingQueue.push(match.player2);
+          io.to(match.player2.socketId).emit('matchCancelled', { reason: 'opponent_declined' });
+        }
+        
+        // Notificar a quien rechazó
+        if (!match.confirmations[match.player1.nick]) {
+          io.to(match.player1.socketId).emit('queueLeft');
+        }
+        if (!match.confirmations[match.player2.nick]) {
+          io.to(match.player2.socketId).emit('queueLeft');
+        }
+      }
+      
+      pendingMatches.delete(matchId);
+    }
+  });
+  
   // Recibir estado de teclas de movimiento desde el cliente
   socket.on('keyState', (data) => {
     const { roomId, nick, key, pressed } = data;
@@ -110,8 +240,53 @@ io.on('connection', (socket) => {
     player.keyStates[key] = pressed;
   });
 
-  socket.on('joinRoom', (roomId) => {
+  socket.on('joinRoom', (data) => {
+    const roomId = typeof data === 'string' ? data : data.roomId;
+    const playerColor = typeof data === 'object' ? data.color : null;
+    const playerNick = typeof data === 'object' ? data.nick : null;
+    const playerStats = typeof data === 'object' ? data.stats : null;
+    
     socket.join(roomId);
+    
+    // Guardar el color y stats del jugador en la sala
+    const sala = salas.find(s => s.id === roomId && s.active);
+    if (sala) {
+      // Buscar jugador por nick si se proporcionó, sino por socketId
+      let player = null;
+      if (playerNick) {
+        player = sala.players.find(p => p.nick === playerNick);
+        if (player) {
+          player.socketId = socket.id; // Vincular socketId con el jugador
+        }
+      } else {
+        player = sala.players.find(p => p.socketId === socket.id);
+      }
+      
+      // Aplicar el color y stats si existen
+      if (player) {
+        if (playerColor) {
+          player.color = playerColor;
+        }
+        // Guardar stats personalizadas del jugador
+        if (playerStats) {
+          player.customStats = playerStats; // Guardar stats calculadas desde el frontend
+        }
+      }
+    }
+    
+    if (sala && sala.is1v1 && sala.round === 0) {
+      // Contar cuántos sockets están en la sala
+      io.in(roomId).fetchSockets().then(sockets => {
+        // Si ambos jugadores están conectados (2 sockets en la sala)
+        if (sockets.length === 2) {
+          console.log(`Ambos jugadores conectados a sala 1v1 ${roomId}, iniciando batalla...`);
+          // Iniciar casi inmediatamente (100ms para asegurar sincronización)
+          setTimeout(() => {
+            iniciarBatalla1v1(roomId);
+          }, 100);
+        }
+      });
+    }
   });
 
   socket.on('gameAccepted', (data) => {
@@ -121,7 +296,7 @@ io.on('connection', (socket) => {
     if (roomId && stats) {
       stats.forEach(stat => {
         const gameWins = stat.nick === winner ? 1 : 0;
-        db.run('UPDATE users SET exp = exp + ?, victories = victories + ?, gameWins = gameWins + ?, totalKills = totalKills + ?, totalDeaths = totalDeaths + ? WHERE nick = ?', [stat.exp, stat.victories, gameWins, stat.kills, stat.deaths, stat.nick], (err) => {
+        db.run('UPDATE users SET exp = exp + ?, victories = victories + ?, gameWins = gameWins + ?, totalKills = totalKills + ?, totalDeaths = totalDeaths + ?, gold = gold + ? WHERE nick = ?', [stat.exp, stat.victories, gameWins, stat.kills, stat.deaths, stat.gold || 0, stat.nick], (err) => {
           if (err) console.error('Error saving stats for', stat.nick, err);
           else {
             // Get new exp and update level
@@ -147,10 +322,12 @@ io.on('connection', (socket) => {
     if (!sala) return;
     if (sala.host.nick !== nick) return; // Solo el host puede iniciar
     if (sala.players.length < 2) return; // Necesita al menos 2 jugadores
+    
+    // 🎮 Crear escenario de batalla profesional
+    crearEscenarioBatalla(roomId);
+    
     // Inicializar ronda por sala si no existe
     sala.round = 1;
-    // Generar bloques aleatorios para la partida
-    sala.bloquesAleatorios = generarBloquesAleatorios(sala.players);
     // Distribuir hasta 4 jugadores en las esquinas
     const offset = 200;
     sala.players.forEach((player, i) => {
@@ -170,7 +347,40 @@ io.on('connection', (socket) => {
         player.x = 1250;
         player.y = 750;
       }
-      player.speed = DEFAULT_SPEED;
+      
+      // Usar stats personalizadas si existen, sino usar valores por defecto
+      if (player.customStats) {
+        player.health = player.customStats.health || 200;
+        player.maxHealth = player.customStats.maxHealth || 200;
+        player.colorBonusDamage = player.customStats.damage || 0;
+        player.speed = player.customStats.speed || DEFAULT_SPEED;
+      } else {
+        // Fallback: calcular según color (compatibilidad con versión antigua)
+        let baseSpeed = DEFAULT_SPEED;
+        let bonusDamage = 0;
+        let maxHealth = 200;
+        
+        if (player.color === '#4A90E2') { // Azul: +5 vida
+          player.health = 205;
+          maxHealth = 205;
+        } else if (player.color === '#E74C3C') { // Rojo: +1 daño
+          player.health = 200;
+          maxHealth = 200;
+          bonusDamage = 1;
+        } else if (player.color === '#2ECC71') { // Verde: +0.3 velocidad
+          player.health = 200;
+          maxHealth = 200;
+          baseSpeed = DEFAULT_SPEED + 0.3;
+        } else {
+          player.health = 200; // Color por defecto
+          maxHealth = 200;
+        }
+        
+        player.maxHealth = maxHealth;
+        player.colorBonusDamage = bonusDamage;
+        player.speed = baseSpeed;
+      }
+      
       player.slowUntil = 0;
       player.speedBoostUntil = 0;
       player.dotUntil = 0;
@@ -195,6 +405,11 @@ io.on('connection', (socket) => {
     }
     // Emitir a la sala que el juego empezó
     io.to(roomId).emit('gameStarted', sala);
+    
+    // Enviar los muros del escenario profesional a todos los clientes
+    if (murosPorSala[roomId]) {
+      io.to(roomId).emit('escenarioMuros', murosPorSala[roomId]);
+    }
   });
 
   socket.on('movePlayer', (data) => {
@@ -224,21 +439,6 @@ io.on('connection', (socket) => {
             break;
           }
         }
-      }
-    }
-    // Verificar colisión con bloques aleatorios
-    for (const bloque of sala.bloquesAleatorios) {
-      const cos = Math.cos(-bloque.angle);
-      const sin = Math.sin(-bloque.angle);
-      const relX = x - bloque.x;
-      const relY = y - bloque.y;
-      const localX = relX * cos - relY * sin;
-      const localY = relX * sin + relY * cos;
-      const rx = bloque.width / 2 + (32); // ancho del bloque / 2 + radio del jugador
-      const ry = bloque.height / 2 + (32);
-      if (Math.abs(localX) <= rx && Math.abs(localY) <= ry) {
-        puedeMover = false;
-        break;
       }
     }
     if (puedeMover) {
@@ -432,6 +632,8 @@ io.on('connection', (socket) => {
       targetX = data.x + Math.cos(data.angle) * range;
       targetY = data.y + Math.sin(data.angle) * range;
     }
+    // Calcular maxRange modificado por potenciador
+    const maxRangeModificado = data.maxRange || mejora.maxRange;
     // Calcular radius con mejoras
     let radius = mejora.radius || 16;
     const sala = salas.find(s => s.id === data.roomId);
@@ -470,7 +672,8 @@ io.on('connection', (socket) => {
               targetY,
               radius,
               skillShot,
-              skyfall: data.skyfall || false
+              skyfall: data.skyfall || false,
+              maxRange: maxRangeModificado // Guardar maxRange modificado
             });
           }
           return;
@@ -493,7 +696,8 @@ io.on('connection', (socket) => {
       targetX,
       targetY,
       skillShot,
-      hasHit: false // Flag para saber si ya impactó
+      hasHit: false, // Flag para saber si ya impactó
+      maxRange: maxRangeModificado // Guardar maxRange modificado
     });
     // Ya no se reenvía nada aquí, el loop global lo enviará a todos
   });
@@ -546,15 +750,25 @@ io.on('connection', (socket) => {
     if (!sala) return;
     const player = sala.players.find(p => p.nick === owner);
     if (!player) return;
-    // Verificar que el target esté dentro del rango
+    const mejora = player.mejoras.find(m => m.id === 'teleport');
+    if (!mejora) return;
+    
+    // Ajustar el destino al rango máximo si está fuera de rango
+    let finalTargetX = targetX;
+    let finalTargetY = targetY;
     const dx = targetX - player.x;
     const dy = targetY - player.y;
     const dist = Math.sqrt(dx * dx + dy * dy);
-    const mejora = player.mejoras.find(m => m.id === 'teleport');
-    if (!mejora || dist > mejora.maxRange) return;
+    
+    if (dist > mejora.maxRange) {
+      const angle = Math.atan2(dy, dx);
+      finalTargetX = player.x + Math.cos(angle) * mejora.maxRange;
+      finalTargetY = player.y + Math.sin(angle) * mejora.maxRange;
+    }
+    
     // Teletransportar
-    player.x = targetX;
-    player.y = targetY;
+    player.x = finalTargetX;
+    player.y = finalTargetY;
     // Ajustar posición si colisiona con un muro
     const maxIterations = 5;
     for (let iteration = 0; iteration < maxIterations; iteration++) {
@@ -592,36 +806,6 @@ io.on('connection', (socket) => {
           }
         }
       }
-      // Ajustar posición si colisiona con bloques aleatorios
-      for (const bloque of sala.bloquesAleatorios) {
-        // Transformar la posición del jugador al sistema local del bloque
-        const cos = Math.cos(-bloque.angle);
-        const sin = Math.sin(-bloque.angle);
-        const relX = player.x - bloque.x;
-        const relY = player.y - bloque.y;
-        const localX = relX * cos - relY * sin;
-        const localY = relX * sin + relY * cos;
-        const rx = bloque.width / 2 + 32; // ancho del bloque / 2 + radio del player
-        const ry = bloque.height / 2 + 32;
-        if (Math.abs(localX) <= rx && Math.abs(localY) <= ry) {
-          // Empujar al jugador fuera del bloque
-          let normX = localX / rx;
-          let normY = localY / ry;
-          const normLen = Math.sqrt(normX * normX + normY * normY) || 1;
-          normX /= normLen;
-          normY /= normLen;
-          // Mover 100 unidades fuera del bloque
-          const pushDist = 100;
-          const newLocalX = localX + normX * pushDist;
-          const newLocalY = localY + normY * pushDist;
-          // Transformar de vuelta a coordenadas globales
-          const globalX = bloque.x + newLocalX * cos + newLocalY * sin;
-          const globalY = bloque.y - newLocalX * sin + newLocalY * cos;
-          player.x = globalX;
-          player.y = globalY;
-          adjusted = true;
-        }
-      }
       if (!adjusted) break;
     }
     // Emitir actualización
@@ -634,16 +818,26 @@ io.on('connection', (socket) => {
     if (!sala) return;
     const player = sala.players.find(p => p.nick === owner);
     if (!player) return;
-    // Verificar que el target esté dentro del rango
+    const mejora = player.mejoras.find(m => m.id === 'embestida');
+    if (!mejora) return;
+    
+    // Ajustar el destino al rango máximo si está fuera de rango
+    let finalTargetX = targetX;
+    let finalTargetY = targetY;
     const dx = targetX - player.x;
     const dy = targetY - player.y;
     const dist = Math.sqrt(dx * dx + dy * dy);
-    const mejora = player.mejoras.find(m => m.id === 'embestida');
-    if (!mejora || dist > mejora.maxRange) return;
+    
+    if (dist > mejora.maxRange) {
+      const angle = Math.atan2(dy, dx);
+      finalTargetX = player.x + Math.cos(angle) * mejora.maxRange;
+      finalTargetY = player.y + Math.sin(angle) * mejora.maxRange;
+    }
+    
     // Iniciar dash
     player.isDashing = true;
-    player.dashTargetX = targetX;
-    player.dashTargetY = targetY;
+    player.dashTargetX = finalTargetX;
+    player.dashTargetY = finalTargetY;
     player.dashSpeed = mejora.velocidad;
     player.dashHit = false;
   });
@@ -687,21 +881,54 @@ io.on('connection', (socket) => {
     // Buscar la sala donde está el jugador
     const sala = salas.find(s => s.players.some(p => p.nick === socket.nick) && s.active !== false);
     if (!sala) return;
+    
+    // Verificar si la sala está en una partida activa
+    const enPartida = sala.round && sala.round >= 1;
+    
     // Eliminar jugador de la sala
     sala.players = sala.players.filter(p => p.nick !== socket.nick);
+    
     // Si el host se fue y quedan jugadores, pasar host al primero
     if (sala.host.nick === socket.nick && sala.players.length > 0) {
       sala.host = { ...sala.players[0] };
       io.to(sala.id).emit('hostChanged', sala.host);
     }
+    
     // Si ya no quedan jugadores, puedes eliminar la sala o marcarla inactiva
     if (sala.players.length === 0) {
       sala.active = false;
       // Opcional: eliminar la sala del array
       // salas = salas.filter(s => s.id !== sala.id);
     }
-    // Notificar a la sala y a todos los clientes
-    io.to(sala.id).emit('playerLeft', sala);
+    
+    // Si estaba en partida y solo queda 1 jugador, declarar victoria automática
+    if (enPartida && sala.players.length === 1) {
+      const winner = sala.players[0];
+      winner.victories = (winner.victories || 0) + 1;
+      
+      // Calcular experiencia para el único sobreviviente
+      const numEnemies = 1; // Al menos 1 enemigo se fue
+      const extraExp = 150; // Bonificación por victoria
+      
+      const finalStats = [{
+        nick: winner.nick,
+        kills: winner.kills || 0,
+        deaths: winner.deaths || 0,
+        victories: winner.victories || 0,
+        exp: (winner.kills || 0) * 40 + (winner.victories || 0) * 75 + extraExp
+      }];
+      
+      // Emitir evento de fin de juego
+      io.to(sala.id).emit('gameEnded', { stats: finalStats, winner: winner.nick });
+      
+      // Marcar sala como inactiva o reiniciar
+      sala.round = 0;
+      sala.active = false;
+    } else {
+      // Notificar a la sala y a todos los clientes normalmente
+      io.to(sala.id).emit('playerLeft', sala);
+    }
+    
     io.emit('roomsUpdated');
   });
   // Guardar el nick del jugador en el socket al unirse
@@ -709,6 +936,234 @@ io.on('connection', (socket) => {
     socket.nick = nick;
   });
 });
+
+// ============================================
+// FUNCIONES DE MATCHMAKING
+// ============================================
+
+// Intentar hacer match entre jugadores en cola
+function tryMatchmaking() {
+  if (matchmakingQueue.length < 2) return;
+  
+  // Tomar los dos primeros jugadores de la cola
+  const player1 = matchmakingQueue.shift();
+  const player2 = matchmakingQueue.shift();
+  
+  // Crear un match pendiente
+  const matchId = `match_${++matchIdCounter}`;
+  const match = {
+    player1,
+    player2,
+    confirmations: {}, // { nick: boolean }
+    createdAt: Date.now()
+  };
+  
+  pendingMatches.set(matchId, match);
+  
+  console.log(`Match creado: ${player1.nick} vs ${player2.nick}`);
+  
+  // Enviar notificación de match a ambos jugadores
+  io.to(player1.socketId).emit('matchFound', {
+    matchId,
+    opponent: { nick: player2.nick, nivel: player2.nivel }
+  });
+  
+  io.to(player2.socketId).emit('matchFound', {
+    matchId,
+    opponent: { nick: player1.nick, nivel: player1.nivel }
+  });
+  
+  // Configurar timeout de 15 segundos
+  setTimeout(() => {
+    const match = pendingMatches.get(matchId);
+    if (!match) return; // Ya fue procesado
+    
+    // Verificar quién no aceptó
+    const player1Accepted = match.confirmations[player1.nick] === true;
+    const player2Accepted = match.confirmations[player2.nick] === true;
+    
+    // Si alguno no aceptó, cancelar match
+    if (!player1Accepted || !player2Accepted) {
+      console.log(`Match ${matchId} expirado. P1: ${player1Accepted}, P2: ${player2Accepted}`);
+      
+      // Devolver a cola a quien sí aceptó
+      if (player1Accepted) {
+        matchmakingQueue.push(player1);
+        io.to(player1.socketId).emit('matchExpired');
+      } else {
+        io.to(player1.socketId).emit('queueLeft');
+      }
+      
+      if (player2Accepted) {
+        matchmakingQueue.push(player2);
+        io.to(player2.socketId).emit('matchExpired');
+      } else {
+        io.to(player2.socketId).emit('queueLeft');
+      }
+      
+      pendingMatches.delete(matchId);
+      
+      // Intentar hacer otro match
+      tryMatchmaking();
+    }
+  }, 15000);
+}
+
+// Crear sala 1v1 cuando ambos aceptan
+async function create1v1Room(player1, player2) {
+  const roomId = `1v1_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+  
+  const sala = {
+    id: roomId,
+    host: { nick: player1.nick, nivel: player1.nivel },
+    players: [
+      { nick: player1.nick, nivel: player1.nivel, x: 0, y: 0, hp: 100, maxHp: 100, kills: 0, deaths: 0, victories: 0, mejoras: [] },
+      { nick: player2.nick, nivel: player2.nivel, x: 0, y: 0, hp: 100, maxHp: 100, kills: 0, deaths: 0, victories: 0, mejoras: [] }
+    ],
+    active: true,
+    is1v1: true, // Marcar como sala 1v1
+    round: 0
+  };
+  
+  salas.push(sala);
+  
+  console.log(`Sala 1v1 creada: ${roomId} - ${player1.nick} vs ${player2.nick}`);
+  
+  // Obtener stats de ambos jugadores
+  const getPlayerStats = (nick) => {
+    return new Promise((resolve) => {
+      db.get('SELECT * FROM users WHERE nick = ?', [nick], (err, row) => {
+        if (err || !row) {
+          resolve({ nick, nivel: 1, exp: 0, victories: 0, totalKills: 0, totalDeaths: 0 });
+        } else {
+          resolve(row);
+        }
+      });
+    });
+  };
+  
+  const [stats1, stats2] = await Promise.all([
+    getPlayerStats(player1.nick),
+    getPlayerStats(player2.nick)
+  ]);
+  
+  // Enviar datos de pre-batalla a ambos jugadores
+  io.to(player1.socketId).emit('matchAccepted', {
+    roomId,
+    opponent: stats2,
+    yourStats: stats1
+  });
+  
+  io.to(player2.socketId).emit('matchAccepted', {
+    roomId,
+    opponent: stats1,
+    yourStats: stats2
+  });
+  
+  io.emit('roomsUpdated');
+  
+  // NO iniciar aquí, esperar a que ambos jugadores se conecten a la sala
+  console.log(`Sala 1v1 preparada, esperando a que ambos jugadores se conecten: ${roomId}`);
+}
+
+// Función para iniciar automáticamente una batalla 1v1
+function iniciarBatalla1v1(roomId) {
+  const sala = salas.find(s => s.id === roomId && s.active);
+  if (!sala) return;
+  if (sala.players.length < 2) return;
+  
+  // 🎮 Crear escenario de batalla profesional
+  crearEscenarioBatalla(roomId);
+  
+  // Inicializar ronda por sala si no existe
+  sala.round = 1;
+  // Distribuir hasta 4 jugadores en las esquinas
+  const offset = 200;
+  sala.players.forEach((player, i) => {
+    if (i === 0) { // esquina arriba-izquierda
+      player.x = offset;
+      player.y = offset;
+    } else if (i === 1) { // esquina arriba-derecha
+      player.x = 2500 - offset;
+      player.y = offset;
+    } else if (i === 2) { // esquina abajo-izquierda
+      player.x = offset;
+      player.y = 1500 - offset;
+    } else if (i === 3) { // esquina abajo-derecha
+      player.x = 2500 - offset;
+      player.y = 1500 - offset;
+    } else {
+      player.x = 1250;
+      player.y = 750;
+    }
+    
+    // Usar stats personalizadas si existen, sino usar valores por defecto
+    if (player.customStats) {
+      player.health = player.customStats.health || 200;
+      player.maxHealth = player.customStats.maxHealth || 200;
+      player.colorBonusDamage = player.customStats.damage || 0;
+      player.speed = player.customStats.speed || DEFAULT_SPEED;
+    } else {
+      // Fallback: calcular según color (compatibilidad con versión antigua)
+      let baseSpeed = DEFAULT_SPEED;
+      let bonusDamage = 0;
+      let maxHealth = 200;
+      
+      if (player.color === '#4A90E2') { // Azul: +5 vida
+        player.health = 205;
+        maxHealth = 205;
+      } else if (player.color === '#E74C3C') { // Rojo: +1 daño
+        player.health = 200;
+        maxHealth = 200;
+        bonusDamage = 1;
+      } else if (player.color === '#2ECC71') { // Verde: +0.3 velocidad
+        player.health = 200;
+        maxHealth = 200;
+        baseSpeed = DEFAULT_SPEED + 0.3;
+      } else {
+        player.health = 200; // Color por defecto
+        maxHealth = 200;
+      }
+      
+      player.maxHealth = maxHealth;
+      player.colorBonusDamage = bonusDamage;
+      player.speed = baseSpeed;
+    }
+    
+    player.slowUntil = 0;
+    player.speedBoostUntil = 0;
+    player.dotUntil = 0;
+    player.dotDamage = 0;
+    player.dotType = null;
+    player.lastDotTime = 0;
+    player.electricDamageBonus = 0;
+    player.kills = 0;
+    player.deaths = 0;
+    player.victories = 0;
+  });
+  
+  // Para ronda 1, enviar upgrades aleatorias
+  if (sala.round === 1) {
+    const proyectilMejoras = MEJORAS.filter(m => m.proyectil && !m.proyectilQ && !m.proyectilEspacio && m.id !== 'cuchilla_fria_menor');
+    function shuffle(array) {
+      return array.sort(() => Math.random() - 0.5);
+    }
+    for (const player of sala.players) {
+      const selectedUpgrades = shuffle([...proyectilMejoras]).slice(0, 3);
+      io.to(roomId).emit('availableUpgrades', { nick: player.nick, upgrades: selectedUpgrades });
+    }
+  }
+  
+  // Emitir a la sala que el juego empezó
+  io.to(roomId).emit('gameStarted', sala);
+  
+  // Enviar los muros del escenario profesional a todos los clientes
+  if (murosPorSala[roomId]) {
+    io.to(roomId).emit('escenarioMuros', murosPorSala[roomId]);
+  }
+  
+  console.log(`Batalla 1v1 iniciada automáticamente: ${roomId}`);
+}
 
 app.use(bodyParser.json());
 app.use(cors({
@@ -721,65 +1176,91 @@ app.use(cors({
 }));
 app.use(express.static(path.join(__dirname, '../frontend')));
 
-// Inicializar base de datos SQLite
-const db = new sqlite3.Database('./users.db', (err) => {
-  if (err) {
-    console.error('Error al abrir la base de datos:', err.message);
-  } else {
-    console.log('Base de datos SQLite abierta.');
-    db.run(`CREATE TABLE IF NOT EXISTS users (
-      id INTEGER PRIMARY KEY AUTOINCREMENT,
-      nick TEXT UNIQUE,
-      password TEXT,
-      nivel INTEGER DEFAULT 1,
-      exp INTEGER DEFAULT 0,
-      victories INTEGER DEFAULT 0
-    )`);
-    // Add exp column if not exists
-    db.run(`ALTER TABLE users ADD COLUMN exp INTEGER DEFAULT 0`, (err) => {
-      if (err && !err.message.includes('duplicate column name')) {
-        console.error('Error adding exp column:', err.message);
-      }
-    });
-    // Add victories column if not exists
-    db.run(`ALTER TABLE users ADD COLUMN victories INTEGER DEFAULT 0`, (err) => {
-      if (err && !err.message.includes('duplicate column name')) {
-        console.error('Error adding victories column:', err.message);
-      }
-    });
-    // Add gameWins column if not exists
-    db.run(`ALTER TABLE users ADD COLUMN gameWins INTEGER DEFAULT 0`, (err) => {
-      if (err && !err.message.includes('duplicate column name')) {
-        console.error('Error adding gameWins column:', err.message);
-      }
-    });
-    // Add totalKills column if not exists
-    db.run(`ALTER TABLE users ADD COLUMN totalKills INTEGER DEFAULT 0`, (err) => {
-      if (err && !err.message.includes('duplicate column name')) {
-        console.error('Error adding totalKills column:', err.message);
-      }
-    });
-    // Add totalDeaths column if not exists
-    db.run(`ALTER TABLE users ADD COLUMN totalDeaths INTEGER DEFAULT 0`, (err) => {
-      if (err && !err.message.includes('duplicate column name')) {
-        console.error('Error adding totalDeaths column:', err.message);
-      }
-    });
-  }
+// Base de datos ya inicializada arriba, agregar columnas faltantes aquí
+db.serialize(() => {
+  // Crear tabla si no existe
+  db.run(`CREATE TABLE IF NOT EXISTS users (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    username TEXT UNIQUE,
+    nick TEXT,
+    password TEXT,
+    nivel INTEGER DEFAULT 1,
+    exp INTEGER DEFAULT 0,
+    victories INTEGER DEFAULT 0
+  )`, (err) => {
+    if (err) console.error('Error creando tabla users:', err);
+    else console.log('Tabla users verificada.');
+  });
+
+  // Add username column if not exists (for existing databases)
+  db.run(`ALTER TABLE users ADD COLUMN username TEXT`, (err) => {
+    if (err && !err.message.includes('duplicate column name')) {
+      console.error('Error adding username column:', err.message);
+    } else if (!err) {
+      // Migrar datos existentes: copiar nick a username si username es NULL
+      db.run(`UPDATE users SET username = nick WHERE username IS NULL`, (err) => {
+        if (err) console.error('Error migrating username data:', err.message);
+      });
+    }
+  });
+  // Add exp column if not exists
+  db.run(`ALTER TABLE users ADD COLUMN exp INTEGER DEFAULT 0`, (err) => {
+    if (err && !err.message.includes('duplicate column name')) {
+      console.error('Error adding exp column:', err.message);
+    }
+  });
+  // Add victories column if not exists
+  db.run(`ALTER TABLE users ADD COLUMN victories INTEGER DEFAULT 0`, (err) => {
+    if (err && !err.message.includes('duplicate column name')) {
+      console.error('Error adding victories column:', err.message);
+    }
+  });
+  // Add gameWins column if not exists
+  db.run(`ALTER TABLE users ADD COLUMN gameWins INTEGER DEFAULT 0`, (err) => {
+    if (err && !err.message.includes('duplicate column name')) {
+      console.error('Error adding gameWins column:', err.message);
+    }
+  });
+  // Add totalKills column if not exists
+  db.run(`ALTER TABLE users ADD COLUMN totalKills INTEGER DEFAULT 0`, (err) => {
+    if (err && !err.message.includes('duplicate column name')) {
+      console.error('Error adding totalKills column:', err.message);
+    }
+  });
+  // Add totalDeaths column if not exists
+  db.run(`ALTER TABLE users ADD COLUMN totalDeaths INTEGER DEFAULT 0`, (err) => {
+    if (err && !err.message.includes('duplicate column name')) {
+      console.error('Error adding totalDeaths column:', err.message);
+    }
+  });
+  // Add nicknameChanged column if not exists
+  db.run(`ALTER TABLE users ADD COLUMN nicknameChanged INTEGER DEFAULT 0`, (err) => {
+    if (err && !err.message.includes('duplicate column name')) {
+      console.error('Error adding nicknameChanged column:', err.message);
+    }
+  });
+  // Add gold column if not exists
+  db.run(`ALTER TABLE users ADD COLUMN gold INTEGER DEFAULT 0`, (err) => {
+    if (err && !err.message.includes('duplicate column name')) {
+      console.error('Error adding gold column:', err.message);
+    }
+  });
 });
 
 // Endpoint de registro
 app.post('/register', (req, res) => {
   const { nick, password } = req.body;
   if (!nick || !password) {
-    return res.status(400).json({ error: 'Nick y contraseña requeridos.' });
+    return res.status(400).json({ error: 'Usuario y contraseña requeridos.' });
   }
+  
+  // El username es fijo (para login), el nick es el nombre mostrado (se puede cambiar)
   db.run(
-    'INSERT INTO users (nick, password) VALUES (?, ?)',
-    [nick, password],
+    'INSERT INTO users (username, nick, password) VALUES (?, ?, ?)',
+    [nick, nick, password],
     function (err) {
       if (err) {
-        return res.status(400).json({ error: 'Nick ya existe o error en registro.' });
+        return res.status(400).json({ error: 'Usuario ya existe o error en registro.' });
       }
       res.json({ success: true, userId: this.lastID });
     }
@@ -790,13 +1271,125 @@ app.post('/register', (req, res) => {
 app.post('/login', (req, res) => {
   const { nick, password } = req.body;
   db.get(
-    'SELECT * FROM users WHERE nick = ? AND password = ?',
+    'SELECT * FROM users WHERE username = ? AND password = ?',
     [nick, password],
     (err, row) => {
       if (err || !row) {
         return res.status(401).json({ error: 'Credenciales incorrectas.' });
       }
-      res.json({ success: true, user: { nick: row.nick, nivel: row.nivel, victories: row.victories, totalKills: row.totalKills, totalDeaths: row.totalDeaths } });
+      res.json({ success: true, user: { username: row.username, nick: row.nick, nivel: row.nivel, victories: row.victories, totalKills: row.totalKills, totalDeaths: row.totalDeaths, nicknameChanged: row.nicknameChanged || 0, gold: row.gold || 0 } });
+    }
+  );
+});
+
+// Endpoint para cambiar el nick (solo una vez)
+app.post('/change-nickname', (req, res) => {
+  const { username, newNick } = req.body;
+  
+  if (!username || !newNick) {
+    return res.status(400).json({ error: 'Se requiere el usuario y el nuevo nick.' });
+  }
+  
+  // Verificar que el nuevo nick no esté vacío y tenga longitud válida
+  if (newNick.trim().length < 3 || newNick.trim().length > 20) {
+    return res.status(400).json({ error: 'El nick debe tener entre 3 y 20 caracteres.' });
+  }
+  
+  // Verificar si el usuario ya cambió su nick antes
+  db.get('SELECT nicknameChanged FROM users WHERE username = ?', [username], (err, row) => {
+    if (err) {
+      return res.status(500).json({ error: 'Error al verificar el usuario.' });
+    }
+    
+    if (!row) {
+      return res.status(404).json({ error: 'Usuario no encontrado.' });
+    }
+    
+    if (row.nicknameChanged >= 1) {
+      return res.status(403).json({ error: 'Ya has cambiado tu nick anteriormente. Solo se permite un cambio.' });
+    }
+    
+    // Verificar que el nuevo nick no esté en uso
+    db.get('SELECT nick FROM users WHERE nick = ?', [newNick], (err, existingUser) => {
+      if (err) {
+        return res.status(500).json({ error: 'Error al verificar disponibilidad del nick.' });
+      }
+      
+      if (existingUser) {
+        return res.status(400).json({ error: 'El nick ya está en uso por otro jugador.' });
+      }
+      
+      // Actualizar SOLO el nick (no el username) y marcar que ya se cambió
+      db.run(
+        'UPDATE users SET nick = ?, nicknameChanged = 1 WHERE username = ?',
+        [newNick, username],
+        function(err) {
+          if (err) {
+            return res.status(500).json({ error: 'Error al actualizar el nick.' });
+          }
+          
+          res.json({ success: true, newNick: newNick });
+        }
+      );
+    });
+  });
+});
+
+// ============================================
+// ENDPOINT PARA GUARDAR INVENTORY Y EQUIPPED
+// ============================================
+app.post('/saveInventory', (req, res) => {
+  const { nick, inventory, equipped } = req.body;
+  
+  if (!nick) {
+    return res.status(400).json({ error: 'Nick requerido.' });
+  }
+  
+  const inventoryJSON = JSON.stringify(inventory || {});
+  const equippedJSON = JSON.stringify(equipped || {});
+  
+  db.run(
+    'UPDATE users SET inventory = ?, equipped = ? WHERE nick = ?',
+    [inventoryJSON, equippedJSON, nick],
+    function(err) {
+      if (err) {
+        console.error('Error al guardar inventory/equipped:', err);
+        return res.status(500).json({ error: 'Error al guardar datos.' });
+      }
+      
+      if (this.changes === 0) {
+        return res.status(404).json({ error: 'Usuario no encontrado.' });
+      }
+      
+      res.json({ success: true });
+    }
+  );
+});
+
+// ============================================
+// ENDPOINT PARA ACTUALIZAR ORO DEL JUGADOR
+// ============================================
+app.post('/updateGold', (req, res) => {
+  const { nick, gold } = req.body;
+  
+  if (!nick || gold === undefined) {
+    return res.status(400).json({ error: 'Nick y gold requeridos.' });
+  }
+  
+  db.run(
+    'UPDATE users SET gold = ? WHERE nick = ?',
+    [gold, nick],
+    function(err) {
+      if (err) {
+        console.error('Error al actualizar oro:', err);
+        return res.status(500).json({ error: 'Error al actualizar oro.' });
+      }
+      
+      if (this.changes === 0) {
+        return res.status(404).json({ error: 'Usuario no encontrado.' });
+      }
+      
+      res.json({ success: true });
     }
   );
 });
@@ -815,13 +1408,67 @@ const muddyGroundsPorSala = {}; // Suelos fangosos por sala
 const murosPorSala = {}; // Muros de piedra por sala
 const sacredGroundsPorSala = {}; // Suelos sagrados por sala
 
+// 🎮 Función para crear el escenario de batalla usando el sistema procedural
+function crearEscenarioBatalla(roomId, roundNumber = 1) {
+  // Limpiar muros existentes
+  murosPorSala[roomId] = [];
+  
+  // Usar el nuevo sistema procedural para generar todos los bloques
+  const bloques = generarBloquesPorRonda(roomId, roundNumber);
+  
+  // Almacenar los bloques generados
+  murosPorSala[roomId] = bloques;
+  
+  console.log(`✨ Escenario RONDA ${roundNumber} creado para sala ${roomId} con ${murosPorSala[roomId].length} bloques`);
+}
+
 // Función para verificar colisión en una posición dada y devolver el obstáculo que colisiona
+// Ahora también retorna la normal de colisión para mejorar el sliding
 function checkCollision(x, y, sala) {
-  // Verificar colisión con muros de piedra
+  // Verificar colisión con muros
   if (murosPorSala[sala.id]) {
     for (const muro of murosPorSala[sala.id]) {
-      const mejora = MEJORAS.find(m => m.id === 'muro_piedra');
-      if (mejora && mejora.colision) {
+      // Si el muro tiene colisión desactivada, saltarlo
+      if (!muro.colision) continue;
+      
+      // 🪨 Si el muro tiene imagen con forma rectangular (como muro_roca), usar colisión AABB rotada
+      if ((muro.imagen || muro.tipo === 'muro_roca') && muro.forma !== 'ovalada') {
+        // Colisión rectangular con rotación (AABB rotado)
+        const cos = Math.cos(-muro.angle);
+        const sin = Math.sin(-muro.angle);
+        const relX = x - muro.x;
+        const relY = y - muro.y;
+        const localX = relX * cos - relY * sin;
+        const localY = relX * sin + relY * cos;
+        
+        // Verificar si está dentro del rectángulo (con margen de colisión)
+        const halfWidth = muro.width + 20; // Margen de 20px para el jugador
+        const halfHeight = muro.height + 20;
+        
+        if (Math.abs(localX) <= halfWidth && Math.abs(localY) <= halfHeight) {
+          // Calcular normal basada en el lado más cercano
+          let normX = 0, normY = 0;
+          const distLeft = halfWidth + localX;
+          const distRight = halfWidth - localX;
+          const distTop = halfHeight + localY;
+          const distBottom = halfHeight - localY;
+          
+          const minDist = Math.min(distLeft, distRight, distTop, distBottom);
+          if (minDist === distLeft) normX = -1;
+          else if (minDist === distRight) normX = 1;
+          else if (minDist === distTop) normY = -1;
+          else if (minDist === distBottom) normY = 1;
+          
+          // Transformar normal a sistema global
+          const cosR = Math.cos(muro.angle);
+          const sinR = Math.sin(muro.angle);
+          const globalNormX = normX * cosR - normY * sinR;
+          const globalNormY = normX * sinR + normY * cosR;
+          
+          return { muro, normalX: globalNormX, normalY: globalNormY };
+        }
+      } else {
+        // Colisión ovalada para otros muros (muro_piedra y otros)
         const cos = Math.cos(-muro.angle);
         const sin = Math.sin(-muro.angle);
         const relX = x - muro.x;
@@ -831,34 +1478,35 @@ function checkCollision(x, y, sala) {
         const rx = muro.width + 32;
         const ry = muro.height + 32;
         if ((localX * localX) / (rx * rx) + (localY * localY) / (ry * ry) <= 1) {
-          return muro; // Devolver el muro que colisiona
+          // Calcular la normal del óvalo en el punto de colisión
+          const normalLocalX = (2 * localX) / (rx * rx);
+          const normalLocalY = (2 * localY) / (ry * ry);
+          const normalLength = Math.sqrt(normalLocalX * normalLocalX + normalLocalY * normalLocalY) || 1;
+          const normX = normalLocalX / normalLength;
+          const normY = normalLocalY / normalLength;
+          
+          // Transformar normal a sistema global
+          const cosR = Math.cos(muro.angle);
+          const sinR = Math.sin(muro.angle);
+          const globalNormX = normX * cosR - normY * sinR;
+          const globalNormY = normX * sinR + normY * cosR;
+          
+          return { muro, normalX: globalNormX, normalY: globalNormY };
         }
       }
-    }
-  }
-  // Verificar colisión con bloques aleatorios
-  for (const bloque of sala.bloquesAleatorios) {
-    const cos = Math.cos(-bloque.angle);
-    const sin = Math.sin(-bloque.angle);
-    const relX = x - bloque.x;
-    const relY = y - bloque.y;
-    const localX = relX * cos - relY * sin;
-    const localY = relX * sin + relY * cos;
-    const rx = bloque.width / 2 + 32;
-    const ry = bloque.height / 2 + 32;
-    if (Math.abs(localX) <= rx && Math.abs(localY) <= ry) {
-      return bloque; // Devolver el bloque que colisiona
     }
   }
   return null; // No colisiona
 }
 
 // Loop global de movimiento server-authoritative (procesa keyStates y emite playerMoved)
+// Mejorado para 60 tickrate (cada ~16ms) con envío optimizado
 setInterval(() => {
   // Procesar cada sala activa
   for (const sala of salas) {
     if (!sala.active) continue;
-    let anyChange = false;
+    const updates = []; // Acumular actualizaciones para envío en batch
+    
     for (const player of sala.players) {
       if (!player.keyStates) continue;
       let dx = 0, dy = 0;
@@ -866,54 +1514,106 @@ setInterval(() => {
       if (player.keyStates.s) dy += 1;
       if (player.keyStates.a) dx -= 1;
       if (player.keyStates.d) dx += 1;
+      
       if (dx !== 0 || dy !== 0) {
         const length = Math.sqrt(dx * dx + dy * dy) || 1;
         dx /= length;
         dy /= length;
-        const moveDistance = (player.speed || DEFAULT_SPEED) * (12 / 16);
+        const moveDistance = (player.speed || DEFAULT_SPEED);
         let tempX = (typeof player.x === 'number' ? player.x : 1000) + dx * moveDistance;
         let tempY = (typeof player.y === 'number' ? player.y : 600) + dy * moveDistance;
+        
         // Clamp to map boundaries
         tempX = Math.max(0, Math.min(2500, tempX));
         tempY = Math.max(0, Math.min(1500, tempY));
-        // Implement sliding along the surface
-        let collidesWith = checkCollision(tempX, tempY, sala);
-        let newX, newY;
-        if (collidesWith) {
-          // Proyectar el movimiento sobre la tangente del obstáculo
-          let tangenteX = Math.cos(collidesWith.angle);
-          let tangenteY = Math.sin(collidesWith.angle);
-          let dot = dx * tangenteX + dy * tangenteY;
-          let newDx = dot * tangenteX;
-          let newDy = dot * tangenteY;
-          // Mover en la dirección proyectada
-          newX = player.x + newDx * moveDistance;
-          newY = player.y + newDy * moveDistance;
-          // Verificar si la nueva posición colisiona, si sí, no mover
-          if (checkCollision(newX, newY, sala)) {
-            newX = player.x;
-            newY = player.y;
-          }
-        } else {
-          // No colisiona, mover completo
+        
+        // 🎮 SISTEMA DE SLIDING MEJORADO CON NORMALES
+        let newX = player.x;
+        let newY = player.y;
+        
+        // Primero intentar el movimiento completo
+        const collision = checkCollision(tempX, tempY, sala);
+        if (!collision) {
+          // Sin colisión, mover libremente
           newX = tempX;
           newY = tempY;
+        } else {
+          // Hay colisión - usar la normal para calcular el deslizamiento perfecto
+          const normal = { x: collision.normalX, y: collision.normalY };
+          
+          // Normalizar el vector de dirección del movimiento
+          const moveVecX = tempX - player.x;
+          const moveVecY = tempY - player.y;
+          
+          // Calcular el producto punto entre el movimiento y la normal
+          const dot = moveVecX * normal.x + moveVecY * normal.y;
+          
+          // Si el jugador se está moviendo hacia la pared (dot < 0), aplicar sliding
+          if (dot < 0) {
+            // Proyectar el vector de movimiento a lo largo de la superficie (perpendicular a la normal)
+            // slideVector = moveVector - (moveVector · normal) * normal
+            const slideX = moveVecX - dot * normal.x;
+            const slideY = moveVecY - dot * normal.y;
+            
+            // Aplicar el movimiento de deslizamiento
+            const slideTargetX = player.x + slideX;
+            const slideTargetY = player.y + slideY;
+            
+            // Verificar que el deslizamiento no cause otra colisión
+            if (!checkCollision(slideTargetX, slideTargetY, sala)) {
+              newX = slideTargetX;
+              newY = slideTargetY;
+            } else {
+              // Si el deslizamiento completo falla, intentar con velocidad reducida
+              const reducedSlideX = player.x + slideX * 0.5;
+              const reducedSlideY = player.y + slideY * 0.5;
+              
+              if (!checkCollision(reducedSlideX, reducedSlideY, sala)) {
+                newX = reducedSlideX;
+                newY = reducedSlideY;
+              } else {
+                // Último recurso: intentar movimientos en ejes separados
+                const onlyX = player.x + dx * moveDistance;
+                if (!checkCollision(onlyX, player.y, sala)) {
+                  newX = onlyX;
+                } else {
+                  const onlyY = player.y + dy * moveDistance;
+                  if (!checkCollision(player.x, onlyY, sala)) {
+                    newY = onlyY;
+                  }
+                }
+              }
+            }
+          } else {
+            // El jugador se está alejando de la pared, permitir movimiento normal en ejes
+            const onlyX = player.x + dx * moveDistance;
+            if (!checkCollision(onlyX, player.y, sala)) {
+              newX = onlyX;
+            }
+            const onlyY = player.y + dy * moveDistance;
+            if (!checkCollision(player.x, onlyY, sala)) {
+              newY = onlyY;
+            }
+          }
         }
+        
         // Update position if changed
         if (newX !== player.x || newY !== player.y) {
           player.x = newX;
           player.y = newY;
-          anyChange = true;
+          updates.push({ nick: player.nick, x: player.x, y: player.y });
         }
       }
     }
-    if (anyChange) {
-      for (const p of sala.players) {
-        io.to(sala.id).emit('playerMoved', { nick: p.nick, x: p.x, y: p.y });
+    
+    // Enviar todas las actualizaciones en batch para reducir overhead de red
+    if (updates.length > 0) {
+      for (const update of updates) {
+        io.to(sala.id).emit('playerMoved', update);
       }
     }
   }
-}, 12);
+}, 16); // 60 FPS tick rate para movimiento más suave
 
 // Utilidad para obtener el daño de una mejora
 function getDanioMejora(mejoraId, ownerNick = null, sala = null) {
@@ -923,6 +1623,13 @@ function getDanioMejora(mejoraId, ownerNick = null, sala = null) {
     const player = sala.players.find(pl => pl.nick === ownerNick);
     if (player && typeof player.electricDamageBonus === 'number') {
       baseDanio += player.electricDamageBonus;
+    }
+  }
+  // Aplicar bonus de daño del color equipado (Color Rojo: +1 daño)
+  if (ownerNick && sala) {
+    const player = sala.players.find(pl => pl.nick === ownerNick);
+    if (player && typeof player.colorBonusDamage === 'number') {
+      baseDanio += player.colorBonusDamage;
     }
   }
   // Si el owner tiene 'explosion_sabor' y la mejora es proyectil o proyectilQ, reducir daño según el efecto
@@ -1126,8 +1833,18 @@ setInterval(() => {
         // Increment kills for killer
         if (jugador.lastAttacker) {
           const killer = sala.players.find(p => p.nick === jugador.lastAttacker);
-          if (killer) killer.kills = (killer.kills || 0) + 1;
+          if (killer) {
+            killer.kills = (killer.kills || 0) + 1;
+            // Otorgar 5 de oro por kill
+            killer.gold = (killer.gold || 0) + 5;
+          }
         }
+        // Emitir evento de tumba
+        io.to(sala.id).emit('playerDied', {
+          nick: jugador.nick,
+          x: jugador.x,
+          y: jugador.y
+        });
       }
     }
       // Lógica de curación de Suelo Sagrado
@@ -1164,9 +1881,10 @@ setInterval(() => {
       let reboteStacks = 0;
       const mejoraProyectil = MEJORAS.find(m => m.id === p.mejoraId);
       // Destruir si supera maxRange
-      if (mejoraProyectil && mejoraProyectil.maxRange && p.startX !== undefined && p.startY !== undefined) {
+      if (mejoraProyectil && p.startX !== undefined && p.startY !== undefined) {
+        const maxRangeActual = p.maxRange || mejoraProyectil.maxRange; // Usar maxRange guardado o fallback
         const distRecorrida = Math.sqrt((p.x - p.startX)**2 + (p.y - p.startY)**2);
-        if (distRecorrida > mejoraProyectil.maxRange) destroy = true;
+        if (distRecorrida > maxRangeActual) destroy = true;
       }
       // Solo proyectiles con proyectil: true
       if (mejoraProyectil && mejoraProyectil.proyectil === true) {
@@ -1182,7 +1900,7 @@ setInterval(() => {
             p.rebotes = (p.rebotes || 0) + 1;
             p.lifetime = 0;
             // Recalcular destino y rango
-            const range = mejoraProyectil?.maxRange || 200;
+            const range = p.maxRange || mejoraProyectil?.maxRange || 200;
             p.targetX = p.x + Math.cos(p.angle) * range;
             p.targetY = p.y + Math.sin(p.angle) * range;
             reboteado = true;
@@ -1192,7 +1910,7 @@ setInterval(() => {
             p.rebotes = (p.rebotes || 0) + 1;
             p.lifetime = 0;
             // Recalcular destino y rango
-            const range = mejoraProyectil?.maxRange || 200;
+            const range = p.maxRange || mejoraProyectil?.maxRange || 200;
             p.targetX = p.x + Math.cos(p.angle) * range;
             p.targetY = p.y + Math.sin(p.angle) * range;
             reboteado = true;
@@ -1201,81 +1919,129 @@ setInterval(() => {
       }
       // Rebote en muros con colision:true
       const muros = murosPorSala[sala.id] || [];
-      for (const muro of muros) {
-        const mejoraMuro = MEJORAS.find(m => m.id === muro.id);
-        if (!mejoraMuro || !mejoraMuro.colision) continue;
-        const cos = Math.cos(-muro.angle);
-        const sin = Math.sin(-muro.angle);
-        const relX = p.x - muro.x;
-        const relY = p.y - muro.y;
-        const localX = relX * cos - relY * sin;
-        const localY = relX * sin + relY * cos;
-        const rx = muro.width + (p.radius || 16);
-        const ry = muro.height + (p.radius || 16);
-        if (reboteStacks > 0 && p.rebotes < reboteStacks && ((localX * localX) / (rx * rx) + (localY * localY) / (ry * ry) <= 1)) {
-          // Rebote en muro
-          // Calcular normal del muro
-          const normalAngle = muro.angle;
-          p.angle = 2 * normalAngle - p.angle;
-          p.rebotes = (p.rebotes || 0) + 1;
-          p.lifetime = 0;
-          // Recalcular destino y rango
-          const mejora = MEJORAS.find(m => m.id === p.mejoraId);
-          const range = mejora?.maxRange || 200;
-          p.targetX = p.x + Math.cos(p.angle) * range;
-          p.targetY = p.y + Math.sin(p.angle) * range;
-          reboteado = true;
-          break;
-        } else if ((localX * localX) / (rx * rx) + (localY * localY) / (ry * ry) <= 1) {
-          // Colisión normal (sin rebote)
-          const mejora = MEJORAS.find(m => m.id === p.mejoraId);
-          if (p.mejoraId === 'meteoro') {
-            p.hasHit = true;
-            handleExplosion(sala, p, io);
+      if (!reboteado) {
+        for (const muro of muros) {
+          if (!muro.colision) continue;
+          
+          let colisionDetectada = false;
+          let globalNormX = 0, globalNormY = 0;
+          
+          // 🪨 Si el muro tiene forma rectangular (como muro_roca)
+          if ((muro.imagen || muro.tipo === 'muro_roca') && muro.forma === 'rectangular') {
+            // Colisión rectangular con rotación (AABB rotado)
+            const cos = Math.cos(-muro.angle);
+            const sin = Math.sin(-muro.angle);
+            const relX = p.x - muro.x;
+            const relY = p.y - muro.y;
+            const localX = relX * cos - relY * sin;
+            const localY = relX * sin + relY * cos;
+            
+            const halfWidth = muro.width + (p.radius || 16);
+            const halfHeight = muro.height + (p.radius || 16);
+            
+            if (Math.abs(localX) <= halfWidth && Math.abs(localY) <= halfHeight) {
+              colisionDetectada = true;
+              
+              // Calcular normal basada en el lado más cercano del rectángulo
+              let normX = 0, normY = 0;
+              const distLeft = halfWidth + localX;
+              const distRight = halfWidth - localX;
+              const distTop = halfHeight + localY;
+              const distBottom = halfHeight - localY;
+              
+              const minDist = Math.min(distLeft, distRight, distTop, distBottom);
+              if (minDist === distLeft) normX = -1;
+              else if (minDist === distRight) normX = 1;
+              else if (minDist === distTop) normY = -1;
+              else if (minDist === distBottom) normY = 1;
+              
+              // Transformar la normal de vuelta al sistema global
+              const cosR = Math.cos(muro.angle);
+              const sinR = Math.sin(muro.angle);
+              globalNormX = normX * cosR - normY * sinR;
+              globalNormY = normX * sinR + normY * cosR;
+            }
+          } else {
+            // Colisión ovalada para otros muros
+            const mejoraMuro = MEJORAS.find(m => m.id === muro.id);
+            if (!mejoraMuro || !mejoraMuro.colision) continue;
+            
+            // Transformar la posición del proyectil al sistema local del muro
+            const cos = Math.cos(-muro.angle);
+            const sin = Math.sin(-muro.angle);
+            const relX = p.x - muro.x;
+            const relY = p.y - muro.y;
+            const localX = relX * cos - relY * sin;
+            const localY = relX * sin + relY * cos;
+            const rx = muro.width + (p.radius || 16);
+            const ry = muro.height + (p.radius || 16);
+            
+            // Verificar colisión con el óvalo
+            const distanceSquared = (localX * localX) / (rx * rx) + (localY * localY) / (ry * ry);
+            
+            if (distanceSquared <= 1) {
+              colisionDetectada = true;
+              
+              // Calcular la normal del óvalo en el punto de colisión
+              const normalLocalX = (2 * localX) / (rx * rx);
+              const normalLocalY = (2 * localY) / (ry * ry);
+              const normalLength = Math.sqrt(normalLocalX * normalLocalX + normalLocalY * normalLocalY);
+              const normX = normalLocalX / normalLength;
+              const normY = normalLocalY / normalLength;
+              
+              // Transformar la normal de vuelta al sistema global
+              const cosR = Math.cos(muro.angle);
+              const sinR = Math.sin(muro.angle);
+              globalNormX = normX * cosR - normY * sinR;
+              globalNormY = normX * sinR + normY * cosR;
+            }
           }
-          if (p.mejoraId === 'cuchilla_fria') {
-            destroy = true;
-            break;
+          
+          // Si hay colisión detectada, procesar rebote o destrucción
+          if (colisionDetectada) {
+            // Hay colisión con el muro
+            if (reboteStacks > 0 && p.rebotes < reboteStacks) {
+              // REBOTE: Calcular la velocidad del proyectil
+              const velX = Math.cos(p.angle);
+              const velY = Math.sin(p.angle);
+              
+              // Reflexión: v' = v - 2(v·n)n
+              const dot = velX * globalNormX + velY * globalNormY;
+              const reflectX = velX - 2 * dot * globalNormX;
+              const reflectY = velY - 2 * dot * globalNormY;
+              
+              // Calcular el nuevo ángulo
+              p.angle = Math.atan2(reflectY, reflectX);
+              p.rebotes = (p.rebotes || 0) + 1;
+              p.lifetime = 0;
+              
+              // Empujar el proyectil ligeramente fuera del muro para evitar colisiones múltiples
+              p.x += globalNormX * 10;
+              p.y += globalNormY * 10;
+              
+              // Recalcular destino y rango
+              const mejora = MEJORAS.find(m => m.id === p.mejoraId);
+              const range = p.maxRange || mejora?.maxRange || 200;
+              p.targetX = p.x + Math.cos(p.angle) * range;
+              p.targetY = p.y + Math.sin(p.angle) * range;
+              
+              reboteado = true;
+              break;
+            } else {
+              // Sin rebotes restantes o no tiene rebote - destruir proyectil
+              const mejora = MEJORAS.find(m => m.id === p.mejoraId);
+              if (p.mejoraId === 'meteoro') {
+                p.hasHit = true;
+                handleExplosion(sala, p, io);
+              }
+              if (p.mejoraId === 'cuchilla_fria') {
+                destroy = true;
+                break;
+              }
+              destroy = true;
+              break;
+            }
           }
-          destroy = true;
-          break;
-        }
-      }
-      // Rebote en bloques aleatorios
-      for (const bloque of sala.bloquesAleatorios) {
-        const cos = Math.cos(-bloque.angle);
-        const sin = Math.sin(-bloque.angle);
-        const relX = p.x - bloque.x;
-        const relY = p.y - bloque.y;
-        const localX = relX * cos - relY * sin;
-        const localY = relX * sin + relY * cos;
-        const rx = bloque.width / 2 + (p.radius || 16);
-        const ry = bloque.height / 2 + (p.radius || 16);
-        if (reboteStacks > 0 && p.rebotes < reboteStacks && Math.abs(localX) <= rx && Math.abs(localY) <= ry) {
-          // Rebote en bloque
-          const normalAngle = bloque.angle;
-          p.angle = 2 * normalAngle - p.angle;
-          p.rebotes = (p.rebotes || 0) + 1;
-          p.lifetime = 0;
-          const mejora = MEJORAS.find(m => m.id === p.mejoraId);
-          const range = mejora?.maxRange || 200;
-          p.targetX = p.x + Math.cos(p.angle) * range;
-          p.targetY = p.y + Math.sin(p.angle) * range;
-          reboteado = true;
-          break;
-        } else if ((localX * localX) / (rx * rx) + (localY * localY) / (ry * ry) <= 1) {
-          // Colisión normal (sin rebote)
-          const mejora = MEJORAS.find(m => m.id === p.mejoraId);
-          if (p.mejoraId === 'meteoro') {
-            p.hasHit = true;
-            handleExplosion(sala, p, io);
-          }
-          if (p.mejoraId === 'cuchilla_fria') {
-            destroy = true;
-            break;
-          }
-          destroy = true;
-          break;
         }
       }
       // Si supera los rebotes permitidos, destruir si sale del mapa
@@ -1337,6 +2103,7 @@ setInterval(() => {
                   const numAgrandadores = agrandadores.length;
                   radiusMenor += numAgrandadores * 10;
                 }
+                const menorMaxRange = MEJORAS.find(m => m.id === 'cuchilla_fria_menor')?.maxRange || 200;
                 proyectiles.push({
                   id: ++projectileIdCounter,
                   x: p.x,
@@ -1351,9 +2118,10 @@ setInterval(() => {
                   radius: radiusMenor,
                   skillShot: true,
                   // Usar el rango definido en MEJORAS
-                  targetX: p.x + Math.cos(ang) * (MEJORAS.find(m => m.id === 'cuchilla_fria_menor')?.maxRange || 200),
-                  targetY: p.y + Math.sin(ang) * (MEJORAS.find(m => m.id === 'cuchilla_fria_menor')?.maxRange || 200),
-                  hasHit: false
+                  targetX: p.x + Math.cos(ang) * menorMaxRange,
+                  targetY: p.y + Math.sin(ang) * menorMaxRange,
+                  hasHit: false,
+                  maxRange: menorMaxRange
                 });
               }
             }
@@ -1426,6 +2194,7 @@ setInterval(() => {
                 const numAgrandadores = agrandadores.length;
                 radiusMenor += numAgrandadores * 10;
               }
+              const menorMaxRange = MEJORAS.find(m => m.id === 'cuchilla_fria_menor')?.maxRange || 200;
               proyectiles.push({
                 id: ++projectileIdCounter,
                 x: baseX,
@@ -1440,22 +2209,44 @@ setInterval(() => {
                 radius: radiusMenor,
                 skillShot: true,
                 // Usar el rango definido en MEJORAS
-                targetX: baseX + Math.cos(ang) * (MEJORAS.find(m => m.id === 'cuchilla_fria_menor')?.maxRange || 200),
-                targetY: baseY + Math.sin(ang) * (MEJORAS.find(m => m.id === 'cuchilla_fria_menor')?.maxRange || 200),
+                targetX: baseX + Math.cos(ang) * menorMaxRange,
+                targetY: baseY + Math.sin(ang) * menorMaxRange,
                 hasHit: false,
-                ignoreNick: impactadoNick // Nuevo campo para ignorar daño a este jugador
+                ignoreNick: impactadoNick, // Nuevo campo para ignorar daño a este jugador
+                maxRange: menorMaxRange
               });
             }
           } else {
             // Otros proyectiles: daño normal
             applyDamage(jugador, damage, io, sala.id, 'hit');
-            const mejoraSlow = MEJORAS.find(m => m.id === p.mejoraId);
-            if (mejoraSlow && mejoraSlow.effect && mejoraSlow.effect.type === 'slow') {
-              jugador.slowUntil = now + mejoraSlow.effect.duration;
-              jugador.speed = DEFAULT_SPEED * (1 - mejoraSlow.effect.amount);
-            }
-            // Leer efecto onHit de la mejora
+            
+            // Aplicar efectos de la mejora
             const mejora = MEJORAS.find(m => m.id === p.mejoraId);
+            const effect = getEffectMejora(p.mejoraId);
+            
+            // Aplicar efecto si existe
+            if (effect) {
+              if (effect.type === 'slow') {
+                jugador.slowUntil = now + (effect.duration || 1000);
+                jugador.speed = DEFAULT_SPEED * (1 - effect.amount);
+              } else if (effect.type === 'dot') {
+                jugador.dotUntil = now + (effect.duration || 3000);
+                jugador.dotDamage = effect.damage || 2;
+                jugador.dotType = effect.dotType || 'fire';
+                jugador.lastDotTime = now;
+              } else if (effect.type === 'stackingDot') {
+                if (jugador.dotUntil > now) {
+                  jugador.dotDamage += effect.damage;
+                } else {
+                  jugador.dotDamage = effect.damage;
+                }
+                jugador.dotUntil = now + (effect.duration || 6000);
+                jugador.dotType = effect.dotType || 'poison';
+                jugador.lastDotTime = now;
+              }
+            }
+            
+            // Leer efecto onHit de la mejora
             if (mejora && mejora.onHit) {
               const portador = sala.players.find(pl => pl.nick === p.owner);
               if (portador) {
@@ -1716,14 +2507,16 @@ setInterval(() => {
         player.electricDamageBonus = 0; // Resetear bonus de daño eléctrico
       });
       // Notificar a los clientes que la ronda terminó y se reinicia
-      io.to(sala.id).emit('roundEnded', { winner: vivos[0].nick, bloques: sala.bloquesAleatorios });
+      io.to(sala.id).emit('roundEnded', { winner: vivos[0].nick });
       // Increment victories for the winner
       const winner = sala.players.find(p => p.nick === vivos[0].nick);
-      if (winner) winner.victories = (winner.victories || 0) + 1;
+      if (winner) {
+        winner.victories = (winner.victories || 0) + 1;
+        // Otorgar 10 de oro por ronda ganada
+        winner.gold = (winner.gold || 0) + 10;
+      }
       // Avanzar la ronda de la sala
       sala.round = (sala.round || 1) + 1;
-      // Regenerar bloques aleatorios para la nueva ronda
-      sala.bloquesAleatorios = generarBloquesAleatorios(sala.players);
       if (sala.round > 7) {
         // Fin del juego después de 7 rondas
         // Determinar el ganador: el que tiene más victorias
@@ -1745,18 +2538,36 @@ setInterval(() => {
         else if (numEnemies === 3) extraExp = 500;
         const finalStats = sala.players.map(p => {
           let exp = (p.kills || 0) * 40 + (p.victories || 0) * 75;
-          if (p.nick === winnerNick) exp += extraExp;
+          let gold = p.gold || 0;
+          if (p.nick === winnerNick) {
+            exp += extraExp;
+            // Otorgar 35 de oro por ganar el juego
+            gold += 35;
+          }
           return {
             nick: p.nick,
             kills: p.kills || 0,
             deaths: p.deaths || 0,
             victories: p.victories || 0,
-            exp: exp
+            exp: exp,
+            gold: gold
           };
         });
         io.to(sala.id).emit('gameEnded', { stats: finalStats, winner: winnerNick });
       } else {
+        // 🎮 Generar NUEVO escenario para la nueva ronda
+        crearEscenarioBatalla(sala.id, sala.round);
+        
+        // Emitir evento de inicio de ronda
+        io.to(sala.id).emit('roundStarted', { round: sala.round });
+        
         io.to(sala.id).emit('gameStarted', sala);
+        
+        // Enviar el NUEVO escenario de la ronda
+        if (murosPorSala[sala.id]) {
+          io.to(sala.id).emit('escenarioMuros', murosPorSala[sala.id]);
+        }
+        
         // De la ronda 2 a la 7, mostrar solo aumentos
         if (sala.round >= 2 && sala.round <= 7) {
           const aumentoMejoras = MEJORAS.filter(m => m.aumento);
@@ -1816,13 +2627,25 @@ app.post('/create-room', (req, res) => {
 // Endpoint para obtener los stats del jugador
 app.get('/stats/:nick', (req, res) => {
   const nick = req.params.nick;
-  db.get('SELECT nick, exp, nivel, gameWins as victories, totalKills, totalDeaths FROM users WHERE nick = ?', [nick], (err, row) => {
+  db.get('SELECT nick, exp, nivel, gameWins as victories, totalKills, totalDeaths, nicknameChanged, gold, inventory, equipped FROM users WHERE nick = ?', [nick], (err, row) => {
     if (err) return res.status(500).json({ error: 'Error de base de datos.' });
     if (!row) return res.status(404).json({ error: 'Jugador no encontrado.' });
     // Si el usuario existe pero no tiene nivel o exp, poner valores por defecto
     if (row.nivel === undefined || row.nivel === null) row.nivel = 1;
     if (row.exp === undefined || row.exp === null) row.exp = 0;
     if (row.victories === undefined || row.victories === null) row.victories = 0;
+    if (row.nicknameChanged === undefined || row.nicknameChanged === null) row.nicknameChanged = 0;
+    
+    // Parsear inventory y equipped desde JSON
+    try {
+      row.inventory = row.inventory ? JSON.parse(row.inventory) : {};
+      row.equipped = row.equipped ? JSON.parse(row.equipped) : {};
+    } catch (e) {
+      console.error('Error parseando inventory/equipped:', e);
+      row.inventory = {};
+      row.equipped = {};
+    }
+    if (row.gold === undefined || row.gold === null) row.gold = 0;
     // Calcular nivel correcto
     const correctLevel = getLevel(row.exp);
     if (row.nivel !== correctLevel) {
@@ -1832,6 +2655,35 @@ app.get('/stats/:nick', (req, res) => {
       row.nivel = correctLevel;
     }
     res.json({ success: true, stats: row });
+  });
+});
+
+// Endpoint para obtener el ranking global (top 100)
+app.get('/ranking', (req, res) => {
+  const query = `
+    SELECT nick, exp, nivel, gameWins as victories, totalKills, totalDeaths
+    FROM users
+    ORDER BY exp DESC
+    LIMIT 100
+  `;
+  
+  db.all(query, [], (err, rows) => {
+    if (err) {
+      console.error('Error al obtener ranking:', err);
+      return res.status(500).json({ error: 'Error de base de datos.' });
+    }
+    
+    // Asegurar que todos los campos tengan valores predeterminados
+    const ranking = rows.map(row => ({
+      nick: row.nick,
+      exp: row.exp || 0,
+      nivel: row.nivel || 1,
+      victories: row.victories || 0,
+      totalKills: row.totalKills || 0,
+      totalDeaths: row.totalDeaths || 0
+    }));
+    
+    res.json({ success: true, ranking });
   });
 });
 
@@ -1851,6 +2703,49 @@ app.get('/rooms', (req, res) => {
   res.json({ success: true, salas: disponibles });
 });
 
+// Endpoint para obtener jugadores activos en tiempo real
+app.get('/active-players', (req, res) => {
+  const playersData = [];
+  const playersSet = new Set();
+  
+  // 1. Obtener jugadores en el menú (conectados pero no en salas)
+  playersOnline.forEach((data, nick) => {
+    // Solo incluir si fue visto en los últimos 30 segundos
+    if (Date.now() - data.lastSeen < 30000) {
+      playersSet.add(nick);
+      playersData.push({
+        nick: nick,
+        nivel: data.nivel || 1,
+        inGame: false
+      });
+    }
+  });
+  
+  // 2. Obtener jugadores en salas activas
+  salas.forEach(sala => {
+    if (sala.active) {
+      sala.players.forEach(player => {
+        if (!playersSet.has(player.nick)) {
+          playersSet.add(player.nick);
+          playersData.push({
+            nick: player.nick,
+            nivel: player.nivel || 1,
+            inGame: sala.round && sala.round >= 1
+          });
+        } else {
+          // Actualizar el estado si ya está en la lista
+          const existingPlayer = playersData.find(p => p.nick === player.nick);
+          if (existingPlayer && sala.round && sala.round >= 1) {
+            existingPlayer.inGame = true;
+          }
+        }
+      });
+    }
+  });
+  
+  res.json({ success: true, players: playersData });
+});
+
 // Endpoint para eliminar una sala (host sale)
 app.post('/delete-room', (req, res) => {
   const { id } = req.body;
@@ -1862,6 +2757,49 @@ app.post('/delete-room', (req, res) => {
     return res.json({ success: true });
   }
   res.status(404).json({ error: 'Sala no encontrada.' });
+});
+
+// Endpoint para expulsar un jugador de la sala (solo el host)
+app.post('/kick-player', (req, res) => {
+  const { roomId, hostNick, kickNick } = req.body;
+  
+  if (!roomId || !hostNick || !kickNick) {
+    return res.status(400).json({ error: 'Datos incompletos.' });
+  }
+  
+  const sala = salas.find(s => s.id === roomId && s.active);
+  
+  if (!sala) {
+    return res.status(404).json({ error: 'Sala no encontrada.' });
+  }
+  
+  // Verificar que quien hace la petición es el host
+  if (sala.host.nick !== hostNick) {
+    return res.status(403).json({ error: 'Solo el host puede expulsar jugadores.' });
+  }
+  
+  // No permitir que el host se expulse a sí mismo
+  if (hostNick === kickNick) {
+    return res.status(400).json({ error: 'El host no puede expulsarse a sí mismo.' });
+  }
+  
+  // Buscar y eliminar al jugador
+  const playerIndex = sala.players.findIndex(p => p.nick === kickNick);
+  
+  if (playerIndex === -1) {
+    return res.status(404).json({ error: 'Jugador no encontrado en la sala.' });
+  }
+  
+  // Eliminar el jugador de la sala
+  sala.players.splice(playerIndex, 1);
+  
+  // Notificar a todos los clientes de la sala que se actualizó
+  io.to(roomId).emit('playerKicked', { kickedNick: kickNick, sala });
+  io.emit('roomsUpdated');
+  
+  console.log(`Jugador ${kickNick} expulsado de la sala ${roomId} por ${hostNick}`);
+  
+  res.json({ success: true, sala });
 });
 
 // Endpoint para unirse a una sala

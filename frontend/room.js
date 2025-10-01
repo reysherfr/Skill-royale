@@ -322,7 +322,7 @@ function mostrarHUDAumentosRonda2() {
     timerDiv.textContent = `⏱️ Tiempo restante: ${timeLeft}s`;
 
     // Cambiar a rojo cuando queda poco tiempo
-    if (timeLeft <= 2) {
+    if (timeLeft <= 5) {
       timerDiv.style.background = 'linear-gradient(135deg, #ff5252, #ff1744)';
       timerDiv.style.WebkitBackgroundClip = 'text';
       timerDiv.style.backgroundClip = 'text';
@@ -350,6 +350,8 @@ function mostrarHUDAumentosRonda2() {
 
 function ocultarHUDAumentosRonda2() {
   hudVisible = false;
+  
+  // Eliminar todos los tooltips inmediatamente
   document.querySelectorAll('.aumento-tooltip').forEach(t => t.remove());
 
   const hud = document.getElementById('hudAumentosRonda2');
@@ -426,6 +428,24 @@ socket.on('playerJoined', (updatedSala) => {
   scheduleRender(updatedSala);
 });
 
+// Escuchar cuando un jugador es expulsado
+socket.on('playerKicked', (data) => {
+  const { kickedNick, sala } = data;
+  
+  // Si el jugador expulsado eres tú, redirigir al menú
+  if (user.nick === kickedNick) {
+    alert('Has sido expulsado de la sala por el host.');
+    window.location.href = 'menu.html';
+    return;
+  }
+  
+  // Si no eres el expulsado, actualizar la sala
+  scheduleRender(sala);
+  
+  // Mostrar notificación
+  console.log(`${kickedNick} ha sido expulsado de la sala`);
+});
+
 socket.on('playersUpdate', (serverPlayers) => {
   // Si la cantidad de jugadores cambió, actualizar lista y renderizar
   let changed = false;
@@ -437,13 +457,22 @@ socket.on('playersUpdate', (serverPlayers) => {
       // Nuevo jugador, agregarlo
       local = new Player({
         ...sp,
-        color: sp.nick === user.nick ? '#2a5298' : '#d32f2f',
+        // Usar el color del servidor o el color por defecto
+        color: sp.color || '#f4c2a0',
         isLocal: sp.nick === user.nick
       });
       players.push(local);
       changed = true;
+      
+      // Debug: verificar maxHealth al crear jugador
+      console.log(`🆕 Nuevo jugador: ${sp.nick} | Health: ${sp.health}/${sp.maxHealth || 200}`);
+    }
+    // Actualizar color del servidor si cambió
+    if (sp.color && local.color !== sp.color) {
+      local.color = sp.color;
     }
     local.health = sp.health;
+    local.maxHealth = sp.maxHealth || 200; // Actualizar maxHealth desde el servidor
     // Don't update position for local player during movement to avoid prediction conflicts
     if (sp.nick !== user.nick) {
       local.x = sp.x;
@@ -486,8 +515,6 @@ socket.on('playersUpdate', (serverPlayers) => {
 
 socket.on('gameStarted', (updatedSala) => {
   sala = updatedSala;
-  // Recibir bloques aleatorios del servidor
-  window.bloquesAleatorios = updatedSala.bloquesAleatorios;
   // Centrar a los jugadores en el mapa (servidor ya lo hace, pero aseguramos aquí)
   if (sala.players.length >= 2) {
     const centerY = MAP_HEIGHT / 2;
@@ -520,6 +547,9 @@ let cuchillaAimingAngle = 0;
 let rocaFangosaAiming = false; // Si está apuntando Roca fangosa
 let muroPiedraAiming = false; // Si está en modo preview de muro de piedra
 let spaceAiming = false; // Si está en modo preview de habilidad espacio
+let tumbas = []; // Array de tumbas { nick, x, y }
+let tumbaImage = null; // Imagen de la tumba
+let spectatorTarget = null; // Jugador al que estamos siguiendo en modo espectador
 let activeCasts = []; // Array de casts activos: [{ position: {x, y}, startTime, player, mejora }]
 let activeMuddyGrounds = []; // Array de suelos fangosos: [{ x, y, radius, duration, createdAt }]
 let activeSacredGrounds = []; // Array de suelos sagrados: [{ x, y, radius, duration, createdAt, owner }]
@@ -533,6 +563,10 @@ let fps = 0;
 let frameCount = 0;
 let lastFpsUpdate = 0;
 let keys = { w: false, a: false, s: false, d: false };
+let localPlayerVelocity = { x: 0, y: 0 };
+let smoothingFactor = 0.3; // Factor de suavizado para interpolación
+let lastInputTime = 0;
+const INPUT_THROTTLE = 50; // ms entre envíos de estado
 let lastQFireTime = 0;
 let mouseX = 0, mouseY = 0;
 let currentRound = 1; // Contador de rondas
@@ -545,11 +579,6 @@ function puedeMoverJugador(x, y) {
     if (muro.width && muro.height && typeof muro.angle === 'number') {
       if (colisionJugadorMuro(x, y, muro)) return false;
     }
-  }
-  // Verificar colisión con bloques aleatorios
-  if (!window.bloquesAleatorios) return true;
-  for (const bloque of window.bloquesAleatorios) {
-    if (colisionJugadorBloque(x, y, bloque)) return false;
   }
   return true;
 }
@@ -569,25 +598,57 @@ function colisionJugadorMuro(playerX, playerY, muro) {
   return (localX * localX) / (rx * rx) + (localY * localY) / (ry * ry) <= 1;
 }
 
-// Detección de colisión entre jugador y bloque aleatorio (cuadrado)
-function colisionJugadorBloque(playerX, playerY, bloque) {
-  // Similar a colisionJugadorMuro
-  const cos = Math.cos(-bloque.angle);
-  const sin = Math.sin(-bloque.angle);
-  const relX = playerX - bloque.x;
-  const relY = playerY - bloque.y;
-  const localX = relX * cos - relY * sin;
-  const localY = relX * sin + relY * cos;
-  const rx = bloque.width / 2 + 32; // ancho del bloque / 2 + radio del jugador
-  const ry = bloque.height / 2 + 32;
-  return Math.abs(localX) <= rx && Math.abs(localY) <= ry;
-}
 const MAP_WIDTH = 2500;
 const MAP_HEIGHT = 1500;
 const WALL_THICKNESS = 24;
+const DEFAULT_SPEED = 5; // Velocidad base de movimiento
 import { MEJORAS, Proyectil } from './mejoras.shared.js';
 
 // Dibuja todos los jugadores en el canvas, con cámara centrada en el jugador local y mundo fijo
+// Cargar imagen de tumba
+if (!tumbaImage) {
+  tumbaImage = new Image();
+  tumbaImage.src = 'tumbas/tumba.png';
+}
+
+// Función para dibujar tumbas
+function drawTumbas() {
+  if (!canvas || !tumbaImage.complete) return;
+  const localPlayer = players.find(p => p.nick === user.nick);
+  if (!localPlayer) return;
+  
+  // Calcular offset de cámara (igual que en drawPlayers)
+  let cameraTarget = localPlayer;
+  if (localPlayer.defeated && spectatorTarget) {
+    const target = players.find(p => p.nick === spectatorTarget);
+    if (target) cameraTarget = target;
+  }
+  
+  let offsetX = cameraTarget.x - canvas.width / 2;
+  let offsetY = cameraTarget.y - canvas.height / 2;
+  offsetX = Math.max(0, Math.min(offsetX, MAP_WIDTH - canvas.width));
+  offsetY = Math.max(0, Math.min(offsetY, MAP_HEIGHT - canvas.height));
+  
+  tumbas.forEach(tumba => {
+    const relativeX = tumba.x - offsetX;
+    const relativeY = tumba.y - offsetY;
+    
+    // Dibujar tumba más grande (60x60 píxeles)
+    const tumbaWidth = 60;
+    const tumbaHeight = 60;
+    ctx.drawImage(tumbaImage, relativeX - tumbaWidth / 2, relativeY - tumbaHeight / 2, tumbaWidth, tumbaHeight);
+    
+    // Nombre del jugador muerto encima de la tumba
+    ctx.fillStyle = '#fff';
+    ctx.strokeStyle = '#000';
+    ctx.lineWidth = 3;
+    ctx.font = 'bold 16px Roboto, Arial';
+    ctx.textAlign = 'center';
+    ctx.strokeText(tumba.nick, relativeX, relativeY - 40);
+    ctx.fillText(tumba.nick, relativeX, relativeY - 40);
+  });
+}
+
 function drawPlayers() {
   if (!canvas) return;
   const localPlayer = players.find(p => p.nick === user.nick);
@@ -597,18 +658,39 @@ function drawPlayers() {
   // }
   if (!localPlayer) return;
     // Debug eliminado
-  // Cámara centrada en el jugador local
-  let offsetX = localPlayer.x - canvas.width / 2;
-  let offsetY = localPlayer.y - canvas.height / 2;
+  
+  // Modo espectador: si el jugador local está derrotado, seguir a otro jugador
+  let cameraTarget = localPlayer;
+  if (localPlayer.defeated) {
+    // Buscar un jugador vivo para seguir
+    if (!spectatorTarget || !players.find(p => p.nick === spectatorTarget && !p.defeated)) {
+      const alivePlayers = players.filter(p => !p.defeated && p.nick !== user.nick);
+      spectatorTarget = alivePlayers.length > 0 ? alivePlayers[0].nick : null;
+    }
+    if (spectatorTarget) {
+      const target = players.find(p => p.nick === spectatorTarget);
+      if (target) cameraTarget = target;
+    }
+  } else {
+    spectatorTarget = null; // Resetear si el jugador revive
+  }
+  
+  // Cámara centrada en el objetivo (jugador local o espectador)
+  let offsetX = cameraTarget.x - canvas.width / 2;
+  let offsetY = cameraTarget.y - canvas.height / 2;
   offsetX = Math.max(0, Math.min(offsetX, MAP_WIDTH - canvas.width));
   offsetY = Math.max(0, Math.min(offsetY, MAP_HEIGHT - canvas.height));
+  
   players.forEach(player => {
+    // No dibujar jugadores derrotados
+    if (player.defeated) return;
     const relativeX = player.x - offsetX;
     const relativeY = player.y - offsetY;
     // Jugadores grandes y circulares
     ctx.beginPath();
     ctx.arc(relativeX, relativeY, 32, 0, 2 * Math.PI); // Radio 32px
-    ctx.fillStyle = player.nick === user.nick ? '#2a5298' : '#d32f2f';
+    // Usar el color personalizado del jugador o el color por defecto
+    ctx.fillStyle = player.color || '#f4c2a0';
     ctx.shadowColor = '#0008';
     ctx.shadowBlur = 8;
     ctx.fill();
@@ -640,13 +722,14 @@ function drawPlayers() {
     const barHeight = 10;
     const barX = relativeX - barWidth / 2;
     const barY = relativeY - 24;
+    const maxHealth = player.maxHealth || 200; // Usar maxHealth del jugador o 200 por defecto
     // Fondo gris
     ctx.fillStyle = '#bbb';
     ctx.fillRect(barX, barY, barWidth, barHeight);
     // Vida (verde)
     ctx.fillStyle = '#4caf50';
-    const vida = Math.max(0, Math.min(player.health ?? 200, 200));
-    ctx.fillRect(barX, barY, barWidth * (vida / 200), barHeight);
+    const vida = Math.max(0, Math.min(player.health ?? maxHealth, maxHealth));
+    ctx.fillRect(barX, barY, barWidth * (vida / maxHealth), barHeight);
     // Borde negro
     ctx.lineWidth = 2;
     ctx.strokeStyle = '#222';
@@ -663,7 +746,7 @@ function drawPlayers() {
     ctx.fillStyle = '#222';
     ctx.font = 'bold 12px Roboto, Arial';
     ctx.textAlign = 'center';
-    ctx.fillText(`${vida}/200`, relativeX, barY + barHeight - 2);
+    ctx.fillText(`${vida}/${maxHealth}`, relativeX, barY + barHeight - 2);
   });
 }
 import { Player, createPlayersFromSala } from './players.js';
@@ -968,7 +1051,99 @@ function iniciarCombate() {
 
 // El movimiento ahora es calculado en el backend. Solo enviamos las teclas presionadas.
 function updateMovement(dt) {
-  // No hacer nada aquí para el movimiento local
+  // Client-side prediction para el jugador local con SLIDING
+  const localPlayer = players.find(p => p.nick === user.nick);
+  if (localPlayer && (localPlayerVelocity.x !== 0 || localPlayerVelocity.y !== 0)) {
+    const speed = localPlayer.speed || DEFAULT_SPEED;
+    const moveDistance = speed * (dt / 16); // Ajustar por framerate
+    
+    const dx = localPlayerVelocity.x * moveDistance;
+    const dy = localPlayerVelocity.y * moveDistance;
+    
+    let tempX = localPlayer.x + dx;
+    let tempY = localPlayer.y + dy;
+    
+    // Aplicar límites del mapa
+    tempX = Math.max(0, Math.min(MAP_WIDTH, tempX));
+    tempY = Math.max(0, Math.min(MAP_HEIGHT, tempY));
+    
+    // 🎮 SISTEMA DE SLIDING - igual que en el servidor
+    let newX = localPlayer.x;
+    let newY = localPlayer.y;
+    
+    // Primero intentar el movimiento completo
+    if (puedeMoverJugador(tempX, tempY)) {
+      // Sin colisión, mover libremente
+      newX = tempX;
+      newY = tempY;
+    } else {
+      // Hay colisión, intentar sliding en ejes separados
+      
+      // 1. Intentar mover solo en X (deslizar horizontalmente)
+      const onlyX = localPlayer.x + dx;
+      if (puedeMoverJugador(onlyX, localPlayer.y)) {
+        newX = onlyX;
+        newY = localPlayer.y;
+      }
+      // 2. Intentar mover solo en Y (deslizar verticalmente)
+      else {
+        const onlyY = localPlayer.y + dy;
+        if (puedeMoverJugador(localPlayer.x, onlyY)) {
+          newX = localPlayer.x;
+          newY = onlyY;
+        }
+      }
+      
+      // 3. Si ninguno funciona, intentar con velocidad reducida
+      if (newX === localPlayer.x && newY === localPlayer.y) {
+        const reducedDx = dx * 0.5;
+        const reducedDy = dy * 0.5;
+        const reducedX = localPlayer.x + reducedDx;
+        const reducedY = localPlayer.y + reducedDy;
+        
+        if (puedeMoverJugador(reducedX, reducedY)) {
+          newX = reducedX;
+          newY = reducedY;
+        } else {
+          // Intentar solo X con velocidad reducida
+          const reducedOnlyX = localPlayer.x + reducedDx;
+          if (puedeMoverJugador(reducedOnlyX, localPlayer.y)) {
+            newX = reducedOnlyX;
+          }
+          // Intentar solo Y con velocidad reducida
+          const reducedOnlyY = localPlayer.y + reducedDy;
+          if (puedeMoverJugador(localPlayer.x, reducedOnlyY)) {
+            newY = reducedOnlyY;
+          }
+        }
+      }
+    }
+    
+    // Aplicar la nueva posición
+    localPlayer.x = newX;
+    localPlayer.y = newY;
+  }
+  
+  // Interpolación suave para otros jugadores
+  players.forEach(player => {
+    if (player.nick !== user.nick && player.targetX !== undefined) {
+      // Interpolar hacia la posición objetivo del servidor
+      const dx = player.targetX - player.x;
+      const dy = player.targetY - player.y;
+      const distance = Math.sqrt(dx * dx + dy * dy);
+      
+      if (distance > 1) {
+        // Factor de interpolación adaptativo: más rápido si la distancia es mayor
+        const interpFactor = Math.min(smoothingFactor * (distance / 50 + 0.5), 1);
+        player.x += dx * interpFactor;
+        player.y += dy * interpFactor;
+      } else {
+        // Muy cerca, snap a la posición objetivo
+        player.x = player.targetX;
+        player.y = player.targetY;
+      }
+    }
+  });
 }
 
 function gameLoop() {
@@ -997,6 +1172,7 @@ function gameLoop() {
   // Actualizar HUD de cooldowns
   actualizarHUDCooldowns();
   drawMap();
+  drawTumbas(); // Dibujar tumbas antes de los jugadores
   drawPlayers();
   // Usar requestAnimationFrame para actualizaciones más suaves
   gameLoopId = requestAnimationFrame(gameLoop);
@@ -1070,22 +1246,59 @@ function initGame() {
 function drawMap() {
   if (!ctx || !canvas) return;
   ctx.clearRect(0, 0, canvas.width, canvas.height);
-  // Cámara centrada en el jugador local
+  // Cámara centrada en el jugador local o en el jugador espectado
   const localPlayer = players.find(p => p.nick === user.nick);
   let offsetX = 0, offsetY = 0;
   if (localPlayer) {
-    offsetX = localPlayer.x - canvas.width / 2;
-    offsetY = localPlayer.y - canvas.height / 2;
+    // Modo espectador: si el jugador local está derrotado, seguir a otro jugador
+    let cameraTarget = localPlayer;
+    if (localPlayer.defeated) {
+      // Buscar un jugador vivo para seguir
+      if (!spectatorTarget || !players.find(p => p.nick === spectatorTarget && !p.defeated)) {
+        const alivePlayers = players.filter(p => !p.defeated && p.nick !== user.nick);
+        spectatorTarget = alivePlayers.length > 0 ? alivePlayers[0].nick : null;
+      }
+      if (spectatorTarget) {
+        const target = players.find(p => p.nick === spectatorTarget);
+        if (target) cameraTarget = target;
+      }
+    } else {
+      spectatorTarget = null; // Resetear si el jugador revive
+    }
+    
+    offsetX = cameraTarget.x - canvas.width / 2;
+    offsetY = cameraTarget.y - canvas.height / 2;
     // Limitar cámara para no mostrar fuera del mapa
     offsetX = Math.max(0, Math.min(offsetX, MAP_WIDTH - canvas.width));
     offsetY = Math.max(0, Math.min(offsetY, MAP_HEIGHT - canvas.height));
   }
-  // Fondo gris liso del mundo
-  ctx.fillStyle = '#888';
+  
+  // Fondo mejorado con gradiente de arena de batalla
+  const bgGradient = ctx.createRadialGradient(
+    MAP_WIDTH / 2 - offsetX, MAP_HEIGHT / 2 - offsetY, 0,
+    MAP_WIDTH / 2 - offsetX, MAP_HEIGHT / 2 - offsetY, MAP_WIDTH / 1.5
+  );
+  bgGradient.addColorStop(0, '#9B8B7E');  // Arena clara en el centro
+  bgGradient.addColorStop(0.6, '#7D6E5D'); // Arena media
+  bgGradient.addColorStop(1, '#5D4E37');   // Arena oscura en los bordes
+  ctx.fillStyle = bgGradient;
   ctx.fillRect(-offsetX, -offsetY, MAP_WIDTH, MAP_HEIGHT);
-
-  // Dibujar bloques aleatorios
-  dibujarBloquesAleatorios(ctx, offsetX, offsetY);
+  
+  // Textura sutil de arena (patrón de puntos)
+  ctx.fillStyle = 'rgba(0, 0, 0, 0.03)';
+  for (let x = 0; x < MAP_WIDTH; x += 30) {
+    for (let y = 0; y < MAP_HEIGHT; y += 30) {
+      // Patrón determinístico basado en posición
+      if ((x + y) % 60 === 0) {
+        ctx.fillRect(x - offsetX, y - offsetY, 2, 2);
+      }
+    }
+  }
+  
+  // Líneas del borde del mapa más visibles
+  ctx.strokeStyle = '#3D2E1F';
+  ctx.lineWidth = 4;
+  ctx.strokeRect(-offsetX, -offsetY, MAP_WIDTH, MAP_HEIGHT);
 
   // Renderizar muros de piedra
   dibujarMurosDePiedra(ctx, offsetX, offsetY);
@@ -1568,12 +1781,15 @@ function handleKeyDown(e) {
   if (key === 'w' || key === 'a' || key === 's' || key === 'd') {
     if (!keys[key]) {
       keys[key] = true;
+      // Enviar estado al servidor inmediatamente para máxima responsividad
       socket.emit('keyState', {
         roomId: roomId,
         nick: user.nick,
         key: key,
         pressed: true
       });
+      // Client-side prediction: actualizar velocidad local inmediatamente
+      updateLocalVelocity();
     }
     e.preventDefault(); // Prevent default browser behavior
     return;
@@ -1611,6 +1827,8 @@ function handleKeyDown(e) {
         // Requiere previsualización: usar aiming
         if (mejoraE.id === 'muro_piedra') {
           if (!muroPiedraAiming) {
+            const now = performance.now();
+            if (window.muroDePiedraCooldown && now - window.muroDePiedraCooldown < mejoraE.cooldown) return;
             muroPiedraAiming = true;
             canvas.style.cursor = 'none';
           } else {
@@ -1662,12 +1880,14 @@ function handleKeyDown(e) {
       } else {
         // Requiere apuntar: teleport or embestida
         if (!spaceAiming) {
+          const now = performance.now();
+          if (window.teleportCooldown && now - window.teleportCooldown < mejoraEspacio.cooldown) return;
           spaceAiming = true;
           canvas.style.cursor = 'none';
         } else {
           const now = performance.now();
           if (window.teleportCooldown && now - window.teleportCooldown < mejoraEspacio.cooldown) return;
-          window.teleportCooldown = now;
+          
           let offsetX = localPlayer.x - canvas.width / 2;
           let offsetY = localPlayer.y - canvas.height / 2;
           offsetX = Math.max(0, Math.min(offsetX, MAP_WIDTH - canvas.width));
@@ -1692,6 +1912,10 @@ function handleKeyDown(e) {
           const destinoFinal = calcularDestinoHabilidadEspacio(localPlayer, { x: targetX, y: targetY }, mejoraEspacio.maxRange);
           targetX = destinoFinal.x;
           targetY = destinoFinal.y;
+          
+          // Activar cooldown DESPUÉS de calcular el destino válido
+          window.teleportCooldown = now;
+          
           // Emitir evento de teleport or dash
           if (mejoraEspacio.id === 'embestida') {
             socket.emit('dashPlayer', {
@@ -1781,6 +2005,8 @@ function handleKeyDown(e) {
       if (mejoraQSeleccionada.nombre === 'Meteoro') {
         const aimingRange = mejoraQSeleccionada.aimRange || 500;
         if (!meteoroAiming) {
+          const now = performance.now();
+          if (now - lastQFireTime < mejoraQSeleccionada.cooldown) return;
           meteoroAiming = true;
         } else {
           meteoroAiming = false;
@@ -1811,6 +2037,8 @@ function handleKeyDown(e) {
       } else if (mejoraQSeleccionada.nombre === 'Cuchilla fria') {
         const aimingRange = mejoraQSeleccionada.aimRange || 350;
         if (!cuchillaAiming) {
+          const now = performance.now();
+          if (now - lastQFireTime < mejoraQSeleccionada.cooldown) return;
           cuchillaAiming = true;
         } else {
           cuchillaAiming = false;
@@ -1840,6 +2068,8 @@ function handleKeyDown(e) {
         }
       } else if (mejoraQSeleccionada.nombre === 'Roca fangosa') {
         if (!rocaFangosaAiming) {
+          const now = performance.now();
+          if (now - lastQFireTime < mejoraQSeleccionada.cooldown) return;
           rocaFangosaAiming = true;
         } else {
           // Empezar cast
@@ -1903,34 +2133,155 @@ function handleKeyDown(e) {
       }
     }
 }
-// Renderizado de muros de piedra
+// Renderizado de muros de piedra mejorado
 function dibujarMurosDePiedra(ctx, offsetX, offsetY) {
   if (!window.murosDePiedra) return;
   const ahora = Date.now();
   window.murosDePiedra = window.murosDePiedra.filter(muro => ahora - muro.creado < muro.duracion);
+  
   window.murosDePiedra.forEach(muro => {
     ctx.save();
-    ctx.fillStyle = muro.color;
-    if (muro.width && muro.height && typeof muro.angle === 'number') {
+    
+    // 🪨 Si el muro tiene imagen (como muro_roca), renderizarlo con la imagen
+    if (muro.imagen) {
       ctx.translate(muro.x - offsetX, muro.y - offsetY);
       ctx.rotate(muro.angle);
-      ctx.beginPath();
-      ctx.ellipse(
-        0,
-        0,
-        muro.width,
-        muro.height,
-        0,
-        0,
-        2 * Math.PI
+      
+      // Sombra del muro
+      ctx.shadowColor = 'rgba(0, 0, 0, 0.6)';
+      ctx.shadowBlur = 20;
+      ctx.shadowOffsetX = 6;
+      ctx.shadowOffsetY = 6;
+      
+      // Cargar y dibujar la imagen si no está cargada
+      if (!window.imagenesBloquesCache) {
+        window.imagenesBloquesCache = {};
+      }
+      
+      if (!window.imagenesBloquesCache[muro.imagen]) {
+        const img = new Image();
+        img.src = muro.imagen;
+        window.imagenesBloquesCache[muro.imagen] = img;
+      }
+      
+      const img = window.imagenesBloquesCache[muro.imagen];
+      if (img.complete) {
+        // Dibujar imagen centrada
+        ctx.drawImage(
+          img,
+          -muro.width,
+          -muro.height,
+          muro.width * 2,
+          muro.height * 2
+        );
+      } else {
+        // Mientras carga, dibujar un óvalo temporal
+        ctx.fillStyle = muro.color || '#8B7765';
+        ctx.beginPath();
+        ctx.ellipse(0, 0, muro.width, muro.height, 0, 0, 2 * Math.PI);
+        ctx.fill();
+      }
+      
+      ctx.setTransform(1, 0, 0, 1, 0, 0);
+    }
+    // Muros normales sin imagen
+    else if (muro.width && muro.height && typeof muro.angle === 'number') {
+      ctx.translate(muro.x - offsetX, muro.y - offsetY);
+      ctx.rotate(muro.angle);
+      
+      // Sombra del muro
+      ctx.shadowColor = 'rgba(0, 0, 0, 0.5)';
+      ctx.shadowBlur = 15;
+      ctx.shadowOffsetX = 5;
+      ctx.shadowOffsetY = 5;
+      
+      // Gradiente para efecto 3D
+      const gradient = ctx.createRadialGradient(
+        -muro.width * 0.3, -muro.height * 0.3, 0,
+        0, 0, Math.max(muro.width, muro.height)
       );
+      
+      // Colores del gradiente basados en el color del muro
+      const baseColor = muro.color || '#5D4E37';
+      const lightColor = lightenColor(baseColor, 25);
+      const darkColor = darkenColor(baseColor, 20);
+      
+      gradient.addColorStop(0, lightColor);
+      gradient.addColorStop(0.6, baseColor);
+      gradient.addColorStop(1, darkColor);
+      
+      ctx.fillStyle = gradient;
+      
+      // Dibujar el óvalo del muro
+      ctx.beginPath();
+      ctx.ellipse(0, 0, muro.width, muro.height, 0, 0, 2 * Math.PI);
       ctx.fill();
-      ctx.setTransform(1,  0, 0, 1, 0, 0);
+      
+      // Borde oscuro para definición
+      ctx.shadowColor = 'transparent';
+      ctx.strokeStyle = darkenColor(baseColor, 40);
+      ctx.lineWidth = 3;
+      ctx.stroke();
+      
+      // Textura de grietas aleatorias (solo para muros permanentes)
+      if (muro.duracion > 100000) {
+        ctx.strokeStyle = 'rgba(0, 0, 0, 0.15)';
+        ctx.lineWidth = 1.5;
+        // Grietas semi-aleatorias basadas en posición (determinísticas)
+        const seed = muro.x + muro.y;
+        for (let i = 0; i < 3; i++) {
+          ctx.beginPath();
+          const startAngle = ((seed + i * 123) % 360) * Math.PI / 180;
+          const startRadius = muro.width * 0.3;
+          const endRadius = muro.width * 0.8;
+          ctx.moveTo(
+            Math.cos(startAngle) * startRadius,
+            Math.sin(startAngle) * startRadius * (muro.height / muro.width)
+          );
+          ctx.lineTo(
+            Math.cos(startAngle + 0.1) * endRadius,
+            Math.sin(startAngle + 0.1) * endRadius * (muro.height / muro.width)
+          );
+          ctx.stroke();
+        }
+      }
+      
+      ctx.setTransform(1, 0, 0, 1, 0, 0);
     } else {
-      ctx.fillRect(muro.x - offsetX - muro.y - offsetY - muro.radius, muro.y - offsetY - muro.radius, muro.radius * 2, muro.radius * 2);
+      // Fallback para muros rectangulares simples
+      ctx.shadowColor = 'rgba(0, 0, 0, 0.5)';
+      ctx.shadowBlur = 10;
+      ctx.shadowOffsetX = 3;
+      ctx.shadowOffsetY = 3;
+      ctx.fillStyle = muro.color;
+      ctx.fillRect(
+        muro.x - offsetX - muro.radius,
+        muro.y - offsetY - muro.radius,
+        muro.radius * 2,
+        muro.radius * 2
+      );
     }
     ctx.restore();
   });
+}
+
+// Funciones auxiliares para manipular colores
+function lightenColor(color, percent) {
+  const num = parseInt(color.replace('#', ''), 16);
+  const amt = Math.round(2.55 * percent);
+  const R = Math.min(255, (num >> 16) + amt);
+  const G = Math.min(255, (num >> 8 & 0x00FF) + amt);
+  const B = Math.min(255, (num & 0x0000FF) + amt);
+  return '#' + (0x1000000 + R * 0x10000 + G * 0x100 + B).toString(16).slice(1);
+}
+
+function darkenColor(color, percent) {
+  const num = parseInt(color.replace('#', ''), 16);
+  const amt = Math.round(2.55 * percent);
+  const R = Math.max(0, (num >> 16) - amt);
+  const G = Math.max(0, (num >> 8 & 0x00FF) - amt);
+  const B = Math.max(0, (num & 0x0000FF) - amt);
+  return '#' + (0x1000000 + R * 0x10000 + G * 0x100 + B).toString(16).slice(1);
 }
 
 function handleKeyUp(e) {
@@ -1945,15 +2296,34 @@ function handleKeyUp(e) {
         key: key,
         pressed: false
       });
+      // Actualizar velocidad local inmediatamente
+      updateLocalVelocity();
     }
   }
+}
+
+// Actualizar la velocidad local basada en teclas presionadas
+function updateLocalVelocity() {
+  let dx = 0, dy = 0;
+  if (keys.w) dy -= 1;
+  if (keys.s) dy += 1;
+  if (keys.a) dx -= 1;
+  if (keys.d) dx += 1;
+  
+  // Normalizar el vector de dirección para movimiento diagonal consistente
+  if (dx !== 0 || dy !== 0) {
+    const length = Math.sqrt(dx * dx + dy * dy);
+    dx /= length;
+    dy /= length;
+  }
+  
+  localPlayerVelocity.x = dx;
+  localPlayerVelocity.y = dy;
 }
 
 // Movimiento WASD con envío suave cada frame
 socket.on('gameStarted', (updatedSala) => {
   sala = updatedSala;
-  // Recibir bloques aleatorios del servidor
-  window.bloquesAleatorios = updatedSala.bloquesAleatorios;
   // Centrar a los jugadores en el mapa (servidor ya lo hace, pero aseguramos aquí)
   if (sala.players.length >= 2) {
     const centerY = MAP_HEIGHT / 2;
@@ -1975,24 +2345,41 @@ socket.on('gameStarted', (updatedSala) => {
     mostrarHUDSeleccionHabilidades();
   }
 });
+
+// Recibir muros del escenario profesional
+socket.on('escenarioMuros', (muros) => {
+  console.log(`🏛️ Escenario de batalla recibido: ${muros.length} obstáculos`);
+  window.murosDePiedra = muros;
+  // Redibujar el mapa para mostrar los muros inmediatamente
+  if (ctx && canvas) {
+    drawMap();
+    drawPlayers();
+  }
+});
+
 socket.on('playerMoved', (data) => {
   const { nick, x, y } = data;
   const player = players.find(p => p.nick === nick);
   if (player) {
-    // For other players, update position directly
+    // Para otros jugadores, usar interpolación suave
     if (nick !== user.nick) {
-      player.x = x;
-      player.y = y;
-      drawMap();
-      drawPlayers();
+      // Guardar posición objetivo si no existe
+      if (!player.targetX) {
+        player.targetX = x;
+        player.targetY = y;
+      } else {
+        player.targetX = x;
+        player.targetY = y;
+      }
+      // La interpolación se hará en el loop de animación
     } else {
-      // For local player, smooth reconciliation with better handling
+      // Para el jugador local, reconciliación suave con client-side prediction
       const dx = x - player.x;
       const dy = y - player.y;
       const distance = Math.sqrt(dx * dx + dy * dy);
       
-      // Only reconcile if the server correction is significant (> 15 pixels)
-      // This prevents jittering from small network variations
+      // Solo reconciliar si la corrección del servidor es significativa (> 20 pixels)
+      // Esto previene el jitter por variaciones de red pequeñas
       if (distance > 15) {
         // For online play, be more aggressive with correction to reduce perceived lag
         const lerpFactor = window.location.hostname === 'localhost' ? 0.3 : 0.6;
@@ -2054,6 +2441,7 @@ socket.on('playersUpdate', (serverPlayers) => {
     const local = players.find(p => p.nick === sp.nick);
     if (local) {
       local.health = sp.health;
+      local.maxHealth = sp.maxHealth || 200; // Actualizar maxHealth desde el servidor
       local.x = sp.x;
       local.y = sp.y;
       local.speed = sp.speed;
@@ -2112,13 +2500,13 @@ async function renderSala(sala) {
             <div class="room-player-card-header">
               <div class="player-avatar">
                 <img src="ranks/${nivel}.png" alt="Rango ${nivel}" class="rank-badge">
-                <div class="player-level">Nv. ${nivel}</div>
               </div>
               <div class="room-player-info">
                 <div class="room-player-name">${player.nick}</div>
                 <div class="room-player-title">⚔️ Guerrero</div>
               </div>
               ${player.nick === sala.host.nick ? '<div class="crown-icon">👑</div>' : ''}
+              ${user.nick === sala.host.nick && player.nick !== sala.host.nick ? `<button class="kick-player-btn" data-nick="${player.nick}" title="Expulsar jugador">✕</button>` : ''}
             </div>
             <div class="room-player-stats">
               <div class="stat-row">
@@ -2156,13 +2544,13 @@ async function renderSala(sala) {
           <div class="room-player-card-header">
             <div class="player-avatar">
               <img src="ranks/${nivel}.png" alt="Rango ${nivel}" class="rank-badge">
-              <div class="player-level">Nv. ${nivel}</div>
             </div>
             <div class="room-player-info">
               <div class="room-player-name">${player.nick}</div>
               <div class="room-player-title">⚔️ Guerrero</div>
             </div>
             ${player.nick === sala.host.nick ? '<div class="crown-icon">👑</div>' : ''}
+            ${user.nick === sala.host.nick && player.nick !== sala.host.nick ? `<button class="kick-player-btn" data-nick="${player.nick}" title="Expulsar jugador">✕</button>` : ''}
           </div>
           <div class="room-player-status ready">
             <span class="status-dot"></span> Listo
@@ -2192,8 +2580,49 @@ async function renderSala(sala) {
     startBtn.style.display = 'none';
   }
   
+  // Agregar event listeners para los botones de kick
+  const kickButtons = document.querySelectorAll('.kick-player-btn');
+  kickButtons.forEach(btn => {
+    btn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      const nickToKick = btn.getAttribute('data-nick');
+      kickPlayer(nickToKick);
+    });
+  });
+  
   // Marcar que terminó el renderizado
   isRendering = false;
+}
+
+// Función para expulsar un jugador de la sala (solo el host puede hacerlo)
+async function kickPlayer(nickToKick) {
+  if (!confirm(`¿Estás seguro de que quieres expulsar a ${nickToKick} de la sala?`)) {
+    return;
+  }
+  
+  try {
+    const response = await fetch(`${SERVER_URL}/kick-player`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ 
+        roomId: roomId, 
+        hostNick: user.nick,
+        kickNick: nickToKick 
+      })
+    });
+    
+    const data = await response.json();
+    
+    if (data.success) {
+      console.log(`Jugador ${nickToKick} expulsado de la sala`);
+      // La sala se actualizará automáticamente con el evento del socket
+    } else {
+      alert(data.error || 'No se pudo expulsar al jugador');
+    }
+  } catch (error) {
+    console.error('Error al expulsar jugador:', error);
+    alert('Error al conectar con el servidor');
+  }
 }
 
 // Función auxiliar para calcular experiencia necesaria por nivel
@@ -2240,8 +2669,30 @@ async function cargarSala() {
       sala = data.salas.find(s => s.id === roomId);
       renderSala(sala);
       if (sala) {
-        // Unirse a la sala de sockets
-        socket.emit('joinRoom', roomId);
+        // Unirse a la sala de sockets con stats calculadas
+        // Usar getUser de ShopSystem para obtener datos migrados
+        const user = window.ShopSystem ? window.ShopSystem.getUser() : JSON.parse(localStorage.getItem('batlesd_user'));
+        
+        // Calcular stats del jugador usando el sistema de tienda
+        let playerColor = '#f4c2a0';
+        let playerStats = { health: 200, damage: 0, speed: 3.5, maxHealth: 200 };
+        
+        if (window.ShopSystem && user?.equipped) {
+          playerColor = window.ShopSystem.getEquippedColor(user.equipped);
+          playerStats = window.ShopSystem.calculatePlayerStats(user.equipped);
+          
+          // Debug: mostrar stats calculadas
+          console.log('🎨 Color equipado:', user.equipped.color);
+          console.log('🎨 Color hex:', playerColor);
+          console.log('📊 Stats calculadas:', playerStats);
+        }
+        
+        socket.emit('joinRoom', { 
+          roomId, 
+          color: playerColor, 
+          nick: user.nick,
+          stats: playerStats // Enviar stats completas al servidor
+        });
       }
     }
   } catch (err) {
@@ -2459,14 +2910,20 @@ function checkSpectatorMode() {
       spectMsg.style.transform = 'translateX(-50%)';
       spectMsg.style.background = 'rgba(0,0,0,0.7)';
       spectMsg.style.color = '#fff';
-      spectMsg.style.fontSize = '2rem';
+      spectMsg.style.fontSize = '1.5rem';
       spectMsg.style.padding = '16px 32px';
       spectMsg.style.borderRadius = '12px';
       spectMsg.style.zIndex = '2000';
       spectMsg.style.textAlign = 'center';
-      spectMsg.style.width = '300px';
+      spectMsg.style.width = '350px';
       spectMsg.style.maxWidth = '90vw';
       document.body.appendChild(spectMsg);
+    }
+    // Actualizar texto con el jugador que está siguiendo
+    if (spectatorTarget) {
+      spectMsg.innerHTML = `💀 Has muerto<br><span style="font-size: 1.1rem; color: #ffd700;">Siguiendo a: ${spectatorTarget}</span>`;
+    } else {
+      spectMsg.textContent = '💀 Has muerto - Esperando...';
     }
   } else if (spectMsg) {
     spectMsg.remove();
@@ -2476,6 +2933,17 @@ function checkSpectatorMode() {
 // Llamar tras cada playersUpdate
 socket.on('playersUpdate', () => { checkSpectatorMode(); });
 
+// Evento cuando un jugador muere: crear tumba
+socket.on('playerDied', (data) => {
+  // Agregar tumba en la posición donde murió el jugador
+  tumbas.push({
+    nick: data.nick,
+    x: data.x,
+    y: data.y
+  });
+  console.log(`[TUMBA] ${data.nick} murió en (${data.x}, ${data.y})`);
+});
+
 // Evento de fin de ronda: mostrar solo mejoras proyectilQ
 socket.on('roundEnded', (data) => {
   mostrarHUDRondas();
@@ -2483,8 +2951,8 @@ socket.on('roundEnded', (data) => {
   activeMuddyGrounds = []; // Clear muddy grounds
   activeSacredGrounds = []; // Clear sacred grounds
   window.murosDePiedra = []; // Clear walls
-  // Recibir nuevos bloques aleatorios
-  window.bloquesAleatorios = data.bloques;
+  tumbas = []; // Limpiar tumbas al final de cada ronda
+  spectatorTarget = null; // Resetear espectador
   currentRound++;
   if (currentRound >= 2 && currentRound <= 7) {
     mostrarHUDAumentosRonda2();
@@ -2497,6 +2965,13 @@ socket.on('roundEnded', (data) => {
   }
   // Limpiar explosiones
   explosions.length = 0;
+});
+
+// Evento de inicio de ronda: resetear modo espectador
+socket.on('roundStarted', () => {
+  spectatorTarget = null; // Volver al jugador local al iniciar nueva ronda
+  const spectMsg = document.getElementById('spectatorMsg');
+  if (spectMsg) spectMsg.remove();
 });
 
 // Evento de fin del juego: mostrar stats finales
@@ -2725,7 +3200,7 @@ function mostrarStatsFinales(stats, winner) {
   titleContainer.appendChild(title);
 
   const subtitle = document.createElement('div');
-  subtitle.textContent = '📊 Resultados de la Batalla';
+  subtitle.textContent = stats.length === 1 ? '🏃 Victoria por Abandono' : '📊 Resultados de la Batalla';
   subtitle.style.fontSize = '1.3rem';
   subtitle.style.color = 'rgba(255,255,255,0.95)';
   subtitle.style.fontWeight = '600';
@@ -2767,6 +3242,18 @@ function mostrarStatsFinales(stats, winner) {
   winnerName.style.color = '#fff';
   winnerName.style.textShadow = '0 4px 12px rgba(0,0,0,0.4)';
   winnerContainer.appendChild(winnerName);
+
+  // Mensaje adicional si ganó por abandono
+  if (stats.length === 1) {
+    const abandonMessage = document.createElement('div');
+    abandonMessage.textContent = '¡Los demás jugadores abandonaron!';
+    abandonMessage.style.fontSize = '1rem';
+    abandonMessage.style.color = 'rgba(255,255,255,0.85)';
+    abandonMessage.style.fontWeight = '600';
+    abandonMessage.style.marginTop = '8px';
+    abandonMessage.style.fontStyle = 'italic';
+    winnerContainer.appendChild(abandonMessage);
+  }
 
   modal.appendChild(winnerContainer);
 
@@ -2827,7 +3314,8 @@ function mostrarStatsFinales(stats, winner) {
       { icon: '⚔️', label: 'Kills', value: stat.kills, color: '#ff5252' },
       { icon: '💀', label: 'Muertes', value: stat.deaths, color: '#9e9e9e' },
       { icon: '🏆', label: 'Victorias', value: stat.victories, color: '#ffd700' },
-      { icon: '✨', label: 'EXP', value: stat.exp, color: '#64b5f6' }
+      { icon: '✨', label: 'EXP', value: stat.exp, color: '#64b5f6' },
+      { icon: '💰', label: 'Oro', value: stat.gold || 0, color: '#ffc107' }
     ];
 
     statsData.forEach(data => {
@@ -3052,6 +3540,20 @@ function mostrarHUDSeleccionHabilidades() {
     }
   ];
 
+  // Variables para guardar las habilidades disponibles de cada tecla
+  const habilidadesDisponibles = {
+    'Click Izquierdo': [],
+    'Q': [],
+    'E': [],
+    'Espacio': []
+  };
+
+  // Variables para rastrear si el jugador ya seleccionó cada habilidad
+  let clickSeleccionado = false;
+  let qSeleccionado = false;
+  let eSeleccionado = false;
+  let espacioSeleccionado = false;
+
   teclas.forEach((tecla, idx) => {
     const section = document.createElement('div');
     section.style.padding = '16px';
@@ -3099,6 +3601,9 @@ function mostrarHUDSeleccionHabilidades() {
         .map(({h}) => h)
         .slice(0, 3);
     }
+    
+    // Guardar las habilidades disponibles para esta tecla
+    habilidadesDisponibles[tecla.nombre] = habilidades;
     
     const grid = document.createElement('div');
     grid.style.display = 'flex';
@@ -3240,8 +3745,14 @@ function mostrarHUDSeleccionHabilidades() {
         // Set local variable for immediate use
         if (tecla.nombre === 'Click Izquierdo') {
           mejoraSeleccionada = hab;
+          clickSeleccionado = true;
         } else if (tecla.nombre === 'Q') {
           mejoraQSeleccionada = hab;
+          qSeleccionado = true;
+        } else if (tecla.nombre === 'E') {
+          eSeleccionado = true;
+        } else if (tecla.nombre === 'Espacio') {
+          espacioSeleccionado = true;
         }
         // For E and Espacio, they will be added to mejorasJugador via playerUpgraded event
       };
@@ -3282,7 +3793,7 @@ function mostrarHUDSeleccionHabilidades() {
     timerDiv.textContent = `⏱️ Tiempo restante: ${timeLeft}s`;
     
     // Cambiar color cuando queda poco tiempo
-    if (timeLeft <= 3) {
+    if (timeLeft <= 10) {
       timerDiv.style.background = 'linear-gradient(135deg, #f44336, #ff5722)';
       timerDiv.style.WebkitBackgroundClip = 'text';
       timerDiv.style.backgroundClip = 'text';
@@ -3293,6 +3804,30 @@ function mostrarHUDSeleccionHabilidades() {
     
     if (timeLeft <= 0) {
       clearInterval(timerInterval);
+      
+      // Asignar habilidades aleatorias a las que no fueron seleccionadas
+      if (!clickSeleccionado && habilidadesDisponibles['Click Izquierdo'].length > 0) {
+        const habAleatoria = habilidadesDisponibles['Click Izquierdo'][Math.floor(Math.random() * habilidadesDisponibles['Click Izquierdo'].length)];
+        mejoraSeleccionada = habAleatoria;
+        socket.emit('selectUpgrade', { roomId, mejoraId: habAleatoria.id });
+      }
+      
+      if (!qSeleccionado && habilidadesDisponibles['Q'].length > 0) {
+        const habAleatoria = habilidadesDisponibles['Q'][Math.floor(Math.random() * habilidadesDisponibles['Q'].length)];
+        mejoraQSeleccionada = habAleatoria;
+        socket.emit('selectUpgrade', { roomId, mejoraId: habAleatoria.id });
+      }
+      
+      if (!eSeleccionado && habilidadesDisponibles['E'].length > 0) {
+        const habAleatoria = habilidadesDisponibles['E'][Math.floor(Math.random() * habilidadesDisponibles['E'].length)];
+        socket.emit('selectUpgrade', { roomId, mejoraId: habAleatoria.id });
+      }
+      
+      if (!espacioSeleccionado && habilidadesDisponibles['Espacio'].length > 0) {
+        const habAleatoria = habilidadesDisponibles['Espacio'][Math.floor(Math.random() * habilidadesDisponibles['Espacio'].length)];
+        socket.emit('selectUpgrade', { roomId, mejoraId: habAleatoria.id });
+      }
+      
       ocultarHUDSeleccionHabilidades();
       socket.emit('startBattle', { roomId });
     }
@@ -3303,6 +3838,8 @@ function mostrarHUDSeleccionHabilidades() {
 
 function ocultarHUDSeleccionHabilidades() {
   hudVisible = false;
+  
+  // Eliminar todos los tooltips inmediatamente
   document.querySelectorAll('.mejora-tooltip').forEach(t => t.remove());
   
   const hud = document.getElementById('habilidadesHUD');
