@@ -3588,6 +3588,74 @@ h1 {
   transform: translateY(-2px) scale(1.05);
 }
 
+/* 🎵 Botón de control de música */
+.music-control-btn {
+  position: fixed;
+  top: 30px;
+  right: 30px;
+  width: 60px;
+  height: 60px;
+  border-radius: 50%;
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  border: none;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-shadow: 
+    0 10px 40px rgba(102, 126, 234, 0.4),
+    0 0 0 0 rgba(102, 126, 234, 0.7);
+  transition: all 0.3s cubic-bezier(0.34, 1.56, 0.64, 1);
+  z-index: 1000;
+  animation: pulse-music 2s ease-in-out infinite;
+}
+
+.music-control-btn svg {
+  width: 24px;
+  height: 24px;
+  color: white;
+  stroke: currentColor;
+  stroke-width: 2;
+  stroke-linecap: round;
+  fill: none;
+  transition: transform 0.3s ease;
+}
+
+.music-control-btn:hover {
+  transform: translateY(-5px);
+  box-shadow: 
+    0 15px 50px rgba(102, 126, 234, 0.6),
+    0 0 0 8px rgba(102, 126, 234, 0.2);
+}
+
+.music-control-btn:hover svg {
+  transform: scale(1.1);
+}
+
+.music-control-btn:active {
+  transform: translateY(-2px) scale(1.05);
+}
+
+.music-control-btn.paused {
+  background: linear-gradient(135deg, #f093fb 0%, #f5576c 100%);
+  box-shadow: 
+    0 10px 40px rgba(245, 87, 108, 0.4),
+    0 0 0 0 rgba(245, 87, 108, 0.7);
+}
+
+@keyframes pulse-music {
+  0%, 100% {
+    box-shadow: 
+      0 10px 40px rgba(102, 126, 234, 0.4),
+      0 0 0 0 rgba(102, 126, 234, 0.7);
+  }
+  50% {
+    box-shadow: 
+      0 10px 40px rgba(102, 126, 234, 0.4),
+      0 0 0 15px rgba(102, 126, 234, 0);
+  }
+}
+
 @keyframes pulse-ranking {
   0%, 100% {
     box-shadow: 

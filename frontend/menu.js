@@ -4,6 +4,33 @@ const SERVER_URL = window.location.hostname === 'localhost' ? 'http://localhost:
 // Conectar a Socket.IO para rastrear jugadores en línea
 const socket = io(SERVER_URL);
 
+// 🎵 Iniciar música de fondo del menú
+const menuMusic = document.getElementById('menuMusic');
+if (menuMusic) {
+  // Intentar reproducir la música automáticamente
+  menuMusic.volume = 0.3; // Volumen al 30%
+  
+  // Verificar si la música debe estar reproduciéndose (persistencia entre páginas)
+  const musicState = localStorage.getItem('menuMusicPlaying');
+  const shouldPlay = musicState === null || musicState === 'true'; // Por defecto: true
+  
+  const playMusic = () => {
+    if (shouldPlay) {
+      menuMusic.play().catch(err => {
+        console.log('Autoplay bloqueado, esperando interacción del usuario');
+      });
+    }
+  };
+  
+  // Intentar reproducir inmediatamente
+  playMusic();
+  
+  // Si falla, reproducir en la primera interacción del usuario
+  if (shouldPlay) {
+    document.addEventListener('click', playMusic, { once: true });
+  }
+}
+
 // Mostrar el nick del usuario
 let user = JSON.parse(localStorage.getItem('batlesd_user'));
 
@@ -1550,3 +1577,67 @@ rankingModalOverlay.addEventListener('click', (e) => {
     closeRankingModalFunc();
   }
 });
+
+// 🎵 Control del botón de música
+const musicControlBtn = document.getElementById('musicControlBtn');
+let isMusicPlaying = localStorage.getItem('menuMusicPlaying') !== 'false'; // Por defecto: true
+
+if (musicControlBtn && menuMusic) {
+  // Configurar estado inicial del botón
+  if (!isMusicPlaying) {
+    musicControlBtn.classList.add('paused');
+    musicControlBtn.title = 'Reproducir Música';
+    musicControlBtn.innerHTML = `
+      <svg width="24" height="24" viewBox="0 0 24 24" fill="currentColor">
+        <path d="M8 5v14l11-7z"/>
+      </svg>
+    `;
+  }
+  
+  musicControlBtn.addEventListener('click', () => {
+    if (isMusicPlaying) {
+      // Pausar música
+      menuMusic.pause();
+      isMusicPlaying = false;
+      localStorage.setItem('menuMusicPlaying', 'false');
+      musicControlBtn.classList.add('paused');
+      musicControlBtn.title = 'Reproducir Música';
+      
+      // Cambiar icono a play
+      musicControlBtn.innerHTML = `
+        <svg width="24" height="24" viewBox="0 0 24 24" fill="currentColor">
+          <path d="M8 5v14l11-7z"/>
+        </svg>
+      `;
+    } else {
+      // Reproducir música
+      menuMusic.play();
+      isMusicPlaying = true;
+      localStorage.setItem('menuMusicPlaying', 'true');
+      musicControlBtn.classList.remove('paused');
+      musicControlBtn.title = 'Pausar Música';
+      
+      // Cambiar icono a pause
+      musicControlBtn.innerHTML = `
+        <svg width="24" height="24" viewBox="0 0 24 24" fill="currentColor">
+          <path d="M9 4v16M15 4v16"/>
+        </svg>
+      `;
+    }
+  });
+  
+  // Sincronizar el estado cuando la música se reproduce
+  menuMusic.addEventListener('play', () => {
+    isMusicPlaying = true;
+    localStorage.setItem('menuMusicPlaying', 'true');
+    musicControlBtn.classList.remove('paused');
+    musicControlBtn.title = 'Pausar Música';
+  });
+  
+  menuMusic.addEventListener('pause', () => {
+    isMusicPlaying = false;
+    localStorage.setItem('menuMusicPlaying', 'false');
+    musicControlBtn.classList.add('paused');
+    musicControlBtn.title = 'Reproducir Música';
+  });
+}

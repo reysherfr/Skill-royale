@@ -8,6 +8,11 @@
   <link rel="stylesheet" href="styles.css">
 </head>
 <body>
+  <!-- 🎵 Música de fondo del menú -->
+  <audio id="menuMusic" loop>
+    <source src="musica/menu.mp3" type="audio/mpeg">
+  </audio>
+
   <!-- Fondo animado con partículas -->
   <div class="particles-background">
     <div class="particle"></div>
@@ -23,6 +28,13 @@
   <!-- Botón flotante de Ranking -->
   <button class="ranking-float-btn" id="rankingFloatBtn" title="Ver Ranking Global">
     <img src="iconos/ranking.png" alt="Ranking">
+  </button>
+
+  <!-- 🎵 Botón de control de música -->
+  <button class="music-control-btn" id="musicControlBtn" title="Pausar Música">
+    <svg width="24" height="24" viewBox="0 0 24 24" fill="currentColor">
+      <path d="M9 4v16M15 4v16"/>
+    </svg>
   </button>
 
   <!-- Panel de jugadores activos (izquierda) -->
@@ -184,8 +196,8 @@
         <div class="btn-arrow">→</div>
       </button>
 
-      <!-- 🔧 BOTÓN DEV MODE - SOLO PARA DESARROLLO -->
-      <button id="devEditorBtn" class="action-btn dev-editor-btn">
+      <!-- 🔧 BOTÓN DEV MODE - SOLO PARA DESARROLLO (OCULTO) -->
+      <button id="devEditorBtn" class="action-btn dev-editor-btn" style="display: none;">
         <div class="btn-icon">
           <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
             <polygon points="12 2 2 7 12 12 22 7 12 2"></polygon>

@@ -705,6 +705,23 @@ const SERVER_URL = window.location.hostname === 'localhost' ? 'http://localhost:
 
 const socket = io(SERVER_URL);
 
+// 🎵 Continuar música de fondo del menú (se detendrá al iniciar batalla)
+const menuMusic = document.getElementById('menuMusic');
+const battleMusic = document.getElementById('battleMusic');
+
+if (menuMusic) {
+  menuMusic.volume = 0.3;
+  const musicState = localStorage.getItem('menuMusicPlaying');
+  if (musicState === null || musicState === 'true') {
+    menuMusic.play().catch(err => console.log('Autoplay bloqueado'));
+  }
+}
+
+// Configurar música de batalla
+if (battleMusic) {
+  battleMusic.volume = 0.4; // Un poco más alta que la del menú para más intensidad
+}
+
 const user = JSON.parse(localStorage.getItem('batlesd_user'));
 const roomId = localStorage.getItem('batlesd_room_id');
 if (!user || !roomId) {
@@ -874,6 +891,18 @@ socket.on('playersUpdate', (serverPlayers) => {
 
 socket.on('gameStarted', (updatedSala) => {
   sala = updatedSala;
+  
+  // 🎵 Cambiar de música del menú a música de batalla
+  if (menuMusic) {
+    menuMusic.pause();
+    menuMusic.currentTime = 0;
+  }
+  
+  // 🎵 Iniciar música de batalla (solo si no está ya reproduciéndose)
+  if (battleMusic && battleMusic.paused) {
+    battleMusic.play().catch(err => console.log('Error al reproducir música de batalla:', err));
+  }
+  
   // Centrar a los jugadores en el mapa (servidor ya lo hace, pero aseguramos aquí)
   if (sala.players.length >= 2) {
     const centerY = MAP_HEIGHT / 2;
@@ -3972,6 +4001,16 @@ function handleKeyUp(e) {
 // Movimiento WASD manejado completamente por el servidor con interpolación suave
 socket.on('gameStarted', (updatedSala) => {
   sala = updatedSala;
+  
+  // 🎵 Cambiar música del menú a batalla (duplicado por seguridad)
+  if (menuMusic) {
+    menuMusic.pause();
+    menuMusic.currentTime = 0;
+  }
+  if (battleMusic && battleMusic.paused) {
+    battleMusic.play().catch(err => console.log('Error al reproducir música de batalla:', err));
+  }
+  
   // Centrar a los jugadores en el mapa (servidor ya lo hace, pero aseguramos aquí)
   if (sala.players.length >= 2) {
     const centerY = MAP_HEIGHT / 2;
@@ -4978,6 +5017,12 @@ socket.on('wallsUpdate', (walls) => {
 function mostrarStatsFinales(stats, winner) {
   // Evitar múltiples modales
   if (document.getElementById('gameEndModal')) return;
+
+  // 🎵 Detener música de batalla cuando termine el juego
+  if (battleMusic) {
+    battleMusic.pause();
+    battleMusic.currentTime = 0; // Reiniciar para la próxima batalla
+  }
 
   // Overlay con efecto de desenfoque
   const overlay = document.createElement('div');

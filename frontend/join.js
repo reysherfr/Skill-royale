@@ -1,6 +1,16 @@
 // Determine server URL based on environment
 const SERVER_URL = window.location.hostname === 'localhost' ? 'http://localhost:3000' : 'http://138.68.250.124:3000';
 
+// 🎵 Continuar música de fondo del menú
+const menuMusic = document.getElementById('menuMusic');
+if (menuMusic) {
+  menuMusic.volume = 0.3;
+  const musicState = localStorage.getItem('menuMusicPlaying');
+  if (musicState === null || musicState === 'true') {
+    menuMusic.play().catch(err => console.log('Autoplay bloqueado'));
+  }
+}
+
 // Verificar usuario logueado
 const user = JSON.parse(localStorage.getItem('batlesd_user'));
 if (!user) {
