@@ -3,76 +3,43 @@
 // ============================================
 
 // ============================================
-// DEFINICIÓN DE ESTADÍSTICAS DE ITEMS
+// DEFINICIÓN DE ITEMS (SOLO ESTÉTICOS)
 // ============================================
 const ITEM_STATS = {
   // Colores (Personajes)
   'color-blue': {
     name: 'Color Azul',
     category: 'colors',
-    color: '#4A90E2',
-    stats: { health: 5, damage: 0, speed: 0 }
+    color: '#4A90E2'
   },
   'color-red': {
     name: 'Color Rojo',
     category: 'colors',
-    color: '#E74C3C',
-    stats: { health: 0, damage: 1, speed: 0 }
+    color: '#E74C3C'
   },
   'color-green': {
     name: 'Color Verde',
     category: 'colors',
-    color: '#2ECC71',
-    stats: { health: 0, damage: 0, speed: 0.3 }
+    color: '#2ECC71'
   },
   // Sombreros (futuro)
   // 'hat-crown': {
   //   name: 'Corona Real',
-  //   category: 'hats',
-  //   stats: { health: 30, damage: 0, speed: 0 }
+  //   category: 'hats'
   // },
   // Armas (futuro)
   // 'weapon-sword': {
   //   name: 'Espada Legendaria',
-  //   category: 'weapons',
-  //   stats: { health: 0, damage: 5, speed: 0 }
+  //   category: 'weapons'
   // },
   // Tumbas (futuro)
   // 'tomb-golden': {
   //   name: 'Tumba Dorada',
-  //   category: 'tombs',
-  //   stats: { health: 10, damage: 2, speed: 0.1 }
+  //   category: 'tombs'
   // }
 };
 
-// ============================================
-// CALCULAR ESTADÍSTICAS TOTALES DEL JUGADOR
-// ============================================
-function calculatePlayerStats(equippedItems) {
-  const baseStats = {
-    health: 200,      // Vida base
-    damage: 0,        // Daño base
-    speed: 5,         // Velocidad base (DEFAULT_SPEED)
-    maxHealth: 200    // Vida máxima base
-  };
-
-  let totalStats = { ...baseStats };
-
-  // Sumar estadísticas de cada item equipado
-  Object.values(equippedItems).forEach(itemId => {
-    if (itemId && ITEM_STATS[itemId]) {
-      const itemStats = ITEM_STATS[itemId].stats;
-      totalStats.health += itemStats.health || 0;
-      totalStats.damage += itemStats.damage || 0;
-      totalStats.speed += itemStats.speed || 0;
-    }
-  });
-
-  // Actualizar maxHealth basado en la vida total
-  totalStats.maxHealth = totalStats.health;
-
-  return totalStats;
-}
+// Items son solo estéticos, no afectan estadísticas del jugador
 
 // ============================================
 // OBTENER COLOR DEL ITEM EQUIPADO
@@ -275,8 +242,7 @@ function updateShopPreview() {
   ctx.strokeStyle = '#fff';
   ctx.stroke();
   
-  // Actualizar texto de preview con stats calculadas
-  const stats = calculatePlayerStats(user.equipped);
+  // Actualizar texto de preview
   const previewColorName = document.getElementById('previewColorName');
   const previewHatName = document.getElementById('previewHatName');
   const previewWeaponName = document.getElementById('previewWeaponName');
@@ -290,9 +256,6 @@ function updateShopPreview() {
   if (previewHatName) previewHatName.textContent = user.equipped.hat || 'Ninguno';
   if (previewWeaponName) previewWeaponName.textContent = user.equipped.weapon || 'Ninguna';
   if (previewTombName) previewTombName.textContent = user.equipped.tomb || 'Por defecto';
-  
-  // Mostrar stats totales en consola (puedes agregarlo a la UI después)
-  console.log('Stats Totales:', stats);
 }
 
 // Obtener nombre del color
@@ -371,16 +334,16 @@ function updateShopItems() {
 function isItemOwned(itemId, user) {
   if (!user || !user.inventory) return false;
   if (itemId.startsWith('color-')) {
-    return user.inventory.colors.includes(itemId);
+    return user.inventory.colors && user.inventory.colors.includes(itemId);
   }
   if (itemId.startsWith('hat-')) {
-    return user.inventory.hats.includes(itemId);
+    return user.inventory.hats && user.inventory.hats.includes(itemId);
   }
   if (itemId.startsWith('weapon-')) {
-    return user.inventory.weapons.includes(itemId);
+    return user.inventory.weapons && user.inventory.weapons.includes(itemId);
   }
   if (itemId.startsWith('tomb-')) {
-    return user.inventory.tombs.includes(itemId);
+    return user.inventory.tombs && user.inventory.tombs.includes(itemId);
   }
   return false;
 }
@@ -425,6 +388,20 @@ async function buyItem(itemId, price) {
     alert('¡No tienes suficiente oro!');
     return;
   }
+  
+  // Asegurar que el inventario existe y tiene todas las propiedades
+  if (!user.inventory) {
+    user.inventory = {
+      colors: [],
+      hats: [],
+      weapons: [],
+      tombs: []
+    };
+  }
+  if (!user.inventory.colors) user.inventory.colors = [];
+  if (!user.inventory.hats) user.inventory.hats = [];
+  if (!user.inventory.weapons) user.inventory.weapons = [];
+  if (!user.inventory.tombs) user.inventory.tombs = [];
   
   // Descontar oro
   user.gold -= price;
@@ -587,7 +564,7 @@ window.ShopSystem = {
   initShop,
   getUser,
   saveUser,
-  calculatePlayerStats,    // Nueva función para calcular stats totales
+  // Items son solo estéticos - no hay stats
   getEquippedColor,        // Nueva función para obtener color equipado
   ITEM_STATS               // Exportar constantes de items
 };

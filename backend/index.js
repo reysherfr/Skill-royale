@@ -248,6 +248,13 @@ io.on('connection', (socket) => {
     const playerNick = typeof data === 'object' ? data.nick : null;
     const playerStats = typeof data === 'object' ? data.stats : null;
     
+    console.log('🔵 [DEBUG] joinRoom evento recibido:', {
+      roomId,
+      playerNick,
+      playerColor,
+      hasStats: !!playerStats
+    });
+    
     socket.join(roomId);
     
     // Guardar el color y stats del jugador en la sala
@@ -274,6 +281,12 @@ io.on('connection', (socket) => {
           player.customStats = playerStats; // Guardar stats calculadas desde el frontend
         }
       }
+      
+      // Notificar a todos los jugadores en la sala que alguien se unió
+      console.log('🟢 [DEBUG] Emitiendo playerJoined a sala:', roomId, 'con', sala.players.length, 'jugadores');
+      io.to(roomId).emit('playerJoined', sala);
+    } else {
+      console.log('🔴 [DEBUG] No se encontró sala o no está activa:', roomId);
     }
     
     if (sala && sala.is1v1 && sala.round === 0) {
@@ -469,6 +482,13 @@ io.on('connection', (socket) => {
     const jugadorServidor = salaShoot.players.find(p => p.nick === data.owner);
     if (!jugadorServidor) return;
     
+    // 🧊 BLOQUEAR si el jugador está congelado
+    if (jugadorServidor.frozen && jugadorServidor.frozenUntil > Date.now()) {
+      console.log(`⛔ Disparo bloqueado: ${data.owner} está congelado`);
+      socket.emit('projectileRejected', { mejoraId: data.mejoraId });
+      return;
+    }
+    
     // Sobrescribir la posición del cliente con la posición del servidor
     data.x = jugadorServidor.x;
     data.y = jugadorServidor.y;
@@ -486,6 +506,18 @@ io.on('connection', (socket) => {
       const lanzador = salaLaser.players.find(p => p.nick === data.owner);
       if (!lanzador) return;
       
+      // 🛡️ PREVENIR LÁSERES DUPLICADOS: Verificar si ya existe un láser activo de este jugador con esta habilidad
+      const existingLaser = laseresContinuosPorSala[data.roomId].find(l => 
+        l.owner === data.owner && l.mejoraId === mejora.id
+      );
+      
+      if (existingLaser) {
+        console.log(`⚠️ Láser duplicado bloqueado: ${data.owner} ya tiene un ${mejora.id} activo`);
+        socket.emit('projectileRejected', { mejoraId: data.mejoraId });
+        return; // Ignorar disparo duplicado
+      }
+      
+      const now = Date.now();
       const laser = {
         id: ++projectileIdCounter,
         x: data.x,
@@ -493,11 +525,11 @@ io.on('connection', (socket) => {
         angle: data.angle,
         maxRange: mejora.maxRange || 400,
         owner: data.owner,
-        createdAt: Date.now(),
+        createdAt: now,
         duracion: mejora.duracion || 3000,
         damageInterval: mejora.damageInterval || 1000,
         damage: mejora.danio || 7,
-        lastDamageTime: 0,
+        lastDamageTime: now, // 🔧 FIX: Inicializar con el tiempo actual para evitar daño inmediato
         color: mejora.color,
         radius: mejora.radius || 8,
         mejoraId: mejora.id,
@@ -604,9 +636,10 @@ io.on('connection', (socket) => {
       const potenciadorStacks = atacante.mejoras ? atacante.mejoras.filter(m => m.id === 'potenciador_proyectil').length : 0;
       let meleeRange = (mejora.maxRange || 80) + (potenciadorStacks * 150);
       
-      // Agrandar aumenta el radio visual del golpe (+10 por stack)
+      // Agrandar aumenta el radio visual del golpe (+10 por stack) Y el rango (+100 por stack)
       const agrandadorStacks = atacante.mejoras ? atacante.mejoras.filter(m => m.id === 'agrandar').length : 0;
       const meleeRadius = (mejora.radius || 20) + (agrandadorStacks * 10);
+      meleeRange += agrandadorStacks * 100; // +100 de rango por cada agrandar
       
       // Dividor: crear múltiples golpes en ángulos diferentes
       const dividorStacks = atacante.mejoras ? atacante.mejoras.filter(m => m.id === 'dividor').length : 0;
@@ -1167,6 +1200,52 @@ io.on('connection', (socket) => {
     });
     // Emitir a todos en la sala
     io.to(roomId).emit('castStarted', { position, startTime, player, mejora });
+  });
+
+  // Recibir creación de Ventisca (sin proyectil)
+  socket.on('createVentisca', (data) => {
+    const { roomId, x, y, owner, mejoraId, angle } = data;
+    const sala = salas.find(s => s.id === roomId && s.active);
+    if (!sala) return;
+    
+    const mejora = MEJORAS.find(m => m.id === mejoraId);
+    if (!mejora) return;
+    
+    console.log(`Backend: Creando Ventisca en (${x}, ${y}) por ${owner} con ángulo ${angle}`);
+    
+    // Crear área de Ventisca inmediatamente
+    if (!ventiscasPorSala[sala.id]) ventiscasPorSala[sala.id] = [];
+    
+    ventiscasPorSala[sala.id].push({
+      x: x,
+      y: y,
+      width: mejora.width || 300,
+      height: mejora.height || 200,
+      angle: angle || 0, // Guardar el ángulo de rotación
+      damage: mejora.danio || 20,
+      damageInterval: mejora.damageInterval || 500,
+      duration: mejora.duration || 2500,
+      slowAmount: mejora.effect?.slowAmount || 0.4,
+      slowDuration: mejora.effect?.slowDuration || 1500,
+      hitsToFreeze: mejora.effect?.hitsToFreeze || 4,
+      freezeDuration: mejora.effect?.freezeDuration || 1000,
+      owner: owner,
+      createdAt: Date.now(),
+      lastDamageTime: Date.now(),
+      affectedPlayers: {} // Rastrear golpes por jugador
+    });
+    
+    // Emitir al frontend para dibujar la ventisca
+    io.to(sala.id).emit('ventiscaCreated', {
+      x: x,
+      y: y,
+      width: mejora.width || 300,
+      height: mejora.height || 200,
+      angle: angle || 0, // Enviar el ángulo al frontend
+      duration: mejora.duration || 2500
+    });
+    
+    console.log(`Ventisca creada y emitida a sala ${sala.id}`);
   });
 
   // Recibir selección de mejora
@@ -1948,8 +2027,10 @@ let salas = [];
 const proyectilesPorSala = {};
 const castsPorSala = {}; // Casteos activos por sala
 const muddyGroundsPorSala = {}; // Suelos fangosos por sala
+const ventiscasPorSala = {}; // Ventiscas activas por sala
 const murosPorSala = {}; // Muros de piedra por sala
 const sacredGroundsPorSala = {}; // Suelos sagrados por sala
+const holyGroundsPorSala = {}; // Suelos sagrados por sala (alias)
 const tornadosPorSala = {}; // Tornados activos por sala
 const hookPullsPorSala = {}; // Jalados activos del gancho por sala
 // 🆕 Nuevas estructuras para habilidades
@@ -1979,8 +2060,15 @@ async function loadCustomMaps() {
 
 // 🎮 Función para crear el escenario de batalla con mapas aleatorios
 async function crearEscenarioBatalla(roomId, roundNumber = 1) {
-  // Limpiar muros existentes
+  // 🧹 Limpiar TODOS los elementos de la sala antes de crear el nuevo escenario
   murosPorSala[roomId] = [];
+  if (proyectilesPorSala[roomId]) proyectilesPorSala[roomId] = [];
+  if (laseresContinuosPorSala[roomId]) laseresContinuosPorSala[roomId] = [];
+  if (tornadosPorSala[roomId]) tornadosPorSala[roomId] = [];
+  if (castsPorSala[roomId]) castsPorSala[roomId] = [];
+  if (muddyGroundsPorSala[roomId]) muddyGroundsPorSala[roomId] = [];
+  if (ventiscasPorSala[roomId]) ventiscasPorSala[roomId] = []; // ❄️ Limpiar ventiscas
+  if (holyGroundsPorSala[roomId]) holyGroundsPorSala[roomId] = [];
   
   // Intentar cargar un mapa personalizado aleatorio
   const customMaps = await loadCustomMaps();
@@ -2045,6 +2133,88 @@ function adjustPositionIfColliding(x, y, sala, radius = 50) {
   // (es mejor intentar poner la habilidad que no ponerla)
   console.warn(`⚠️ No se pudo encontrar posición válida para habilidad en (${x}, ${y})`);
   return { x, y, adjusted: false };
+}
+
+// 🚨 Función para expulsar un jugador que está dentro de un muro
+// Esta función detecta si un jugador está dentro de un muro y lo empuja hacia afuera
+function expelPlayerFromWall(player, sala) {
+  const collision = checkCollision(player.x, player.y, sala);
+  
+  if (!collision) {
+    // No hay colisión, el jugador está en una posición válida
+    return false;
+  }
+  
+  // El jugador está dentro de un muro, intentar expulsarlo
+  console.log(`🚨 Jugador ${player.nick} detectado dentro de un muro en (${player.x}, ${player.y})`);
+  
+  // Intentar expulsar usando la normal del muro
+  let expelDistance = 20; // Distancia inicial de expulsión
+  let maxAttempts = 30; // Máximo número de intentos
+  let attempt = 0;
+  
+  while (attempt < maxAttempts) {
+    const testX = player.x + collision.normalX * expelDistance;
+    const testY = player.y + collision.normalY * expelDistance;
+    
+    // Verificar que la nueva posición esté dentro de los límites del mapa
+    if (testX < 0 || testX > 2500 || testY < 0 || testY > 1500) {
+      expelDistance += 10;
+      attempt++;
+      continue;
+    }
+    
+    const testCollision = checkCollision(testX, testY, sala);
+    
+    if (!testCollision) {
+      // Posición válida encontrada, mover al jugador
+      player.x = testX;
+      player.y = testY;
+      console.log(`✅ Jugador ${player.nick} expulsado exitosamente a (${player.x}, ${player.y})`);
+      return true;
+    }
+    
+    // Incrementar distancia de expulsión
+    expelDistance += 10;
+    attempt++;
+  }
+  
+  // Si no se pudo expulsar con la normal, intentar en las 8 direcciones cardinales
+  const directions = [
+    { x: 1, y: 0 },   // derecha
+    { x: -1, y: 0 },  // izquierda
+    { x: 0, y: 1 },   // abajo
+    { x: 0, y: -1 },  // arriba
+    { x: 1, y: 1 },   // diagonal abajo-derecha
+    { x: -1, y: 1 },  // diagonal abajo-izquierda
+    { x: 1, y: -1 },  // diagonal arriba-derecha
+    { x: -1, y: -1 }  // diagonal arriba-izquierda
+  ];
+  
+  for (const dir of directions) {
+    let distance = 20;
+    while (distance < 200) {
+      const testX = player.x + dir.x * distance;
+      const testY = player.y + dir.y * distance;
+      
+      // Verificar límites del mapa
+      if (testX < 0 || testX > 2500 || testY < 0 || testY > 1500) {
+        break;
+      }
+      
+      if (!checkCollision(testX, testY, sala)) {
+        player.x = testX;
+        player.y = testY;
+        console.log(`✅ Jugador ${player.nick} expulsado en dirección alternativa a (${player.x}, ${player.y})`);
+        return true;
+      }
+      
+      distance += 15;
+    }
+  }
+  
+  console.warn(`⚠️ No se pudo expulsar al jugador ${player.nick} del muro`);
+  return false;
 }
 
 // Función auxiliar para detectar intersección entre una línea y un rectángulo
@@ -2240,7 +2410,8 @@ setInterval(() => {
     if (!sala.active) continue;
     
     for (const player of sala.players) {
-      if (!player.keyStates || player.defeated || player.beingPulled) continue;
+      // 🧊 No permitir movimiento si está congelado, derrotado o siendo jalado
+      if (!player.keyStates || player.defeated || player.beingPulled || player.frozen) continue;
       
       let dx = 0, dy = 0;
       if (player.keyStates.w) dy -= 1;
@@ -2565,11 +2736,12 @@ setInterval(async () => {
             killer.gold = (killer.gold || 0) + 5;
           }
         }
-        // Emitir evento de tumba
+        // Emitir evento de tumba con información del killer
         io.to(sala.id).emit('playerDied', {
           nick: jugador.nick,
           x: jugador.x,
-          y: jugador.y
+          y: jugador.y,
+          killer: jugador.lastAttacker || null
         });
       }
     }
@@ -2714,7 +2886,8 @@ setInterval(async () => {
             const lanzador = jugadores.find(p => p.nick === laser.owner);
             if (lanzador && !lanzador.defeated) {
               const healAmount = laser.healPerSecond;
-              lanzador.health = Math.min(100, lanzador.health + healAmount);
+              const maxHealth = lanzador.maxHealth || 200; // Usar la vida máxima del jugador
+              lanzador.health = Math.min(maxHealth, lanzador.health + healAmount);
               
               io.to(sala.id).emit('healEvent', {
                 target: lanzador.nick,
@@ -3182,8 +3355,12 @@ setInterval(async () => {
           // Verificar si es skyfall
           const mejora = MEJORAS.find(m => m.id === p.mejoraId);
           if (mejora && mejora.skyfall) {
+            console.log(`Skyfall ${p.mejoraId} impactando en (${p.targetX}, ${p.targetY})`);
+            
             // Para skyfall, aplicar daño en área en el target cuando llega al suelo
             const skyfallRadius = p.radius; // Usar el radio agrandado del proyectil
+            
+            // Aplicar daño de impacto directo
             for (const jugador of jugadores) {
               if (jugador.nick === p.owner || jugador.defeated) continue;
               const jdx = jugador.x - p.targetX;
@@ -3193,8 +3370,70 @@ setInterval(async () => {
                 const damage = getDanioMejora(p.mejoraId, p.owner, sala);
                 jugador.lastAttacker = p.owner;
                 applyDamage(jugador, damage, io, sala.id, 'skyfall');
+                console.log(`Daño directo de ${damage} aplicado a ${jugador.nick}`);
+                
+                // 🔥 Aplicar efecto de quemadura si lo tiene (Super Meteoro)
+                if (mejora.effect && mejora.effect.type === 'dot') {
+                  jugador.dotEffects = jugador.dotEffects || [];
+                  jugador.dotEffects.push({
+                    damage: mejora.effect.damage,
+                    duration: mejora.effect.duration,
+                    startTime: Date.now(),
+                    elemento: mejora.elemento || 'fuego'
+                  });
+                  console.log(`Quemadura aplicada a ${jugador.nick}: ${mejora.effect.damage} daño/s por ${mejora.effect.duration}ms`);
+                }
               }
             }
+            
+            // 💥 Emitir animación de impacto directo (crater del meteoro)
+            io.to(sala.id).emit('explosion', {
+              x: p.targetX,
+              y: p.targetY,
+              radius: skyfallRadius,
+              color: '#FF4500', // Naranja rojizo intenso para el impacto
+              duration: 400 // Impacto rápido
+            });
+            
+            // 💥 Aplicar daño de onda expansiva si existe (Super Meteoro)
+            if (mejora.explosionRadius && mejora.explosionDamage) {
+              console.log(`Aplicando onda expansiva: radio ${mejora.explosionRadius}, daño ${mejora.explosionDamage}`);
+              for (const jugador of jugadores) {
+                if (jugador.nick === p.owner || jugador.defeated) continue;
+                const jdx = jugador.x - p.targetX;
+                const jdy = jugador.y - p.targetY;
+                const jdist = Math.sqrt(jdx*jdx + jdy*jdy);
+                
+                // Solo aplicar onda expansiva si NO está en el radio de impacto directo
+                if (jdist > skyfallRadius + 32 && jdist <= mejora.explosionRadius + 32) {
+                  jugador.lastAttacker = p.owner;
+                  applyDamage(jugador, mejora.explosionDamage, io, sala.id, 'explosion');
+                  console.log(`Daño de explosión de ${mejora.explosionDamage} aplicado a ${jugador.nick}`);
+                  
+                  // 🔥 Aplicar efecto de quemadura también en la onda expansiva
+                  if (mejora.effect && mejora.effect.type === 'dot') {
+                    jugador.dotEffects = jugador.dotEffects || [];
+                    jugador.dotEffects.push({
+                      damage: mejora.effect.damage,
+                      duration: mejora.effect.duration,
+                      startTime: Date.now(),
+                      elemento: mejora.elemento || 'fuego'
+                    });
+                  }
+                }
+              }
+              
+              // 🌊 Emitir animación de onda expansiva (como el meteoro normal)
+              io.to(sala.id).emit('explosion', {
+                x: p.targetX,
+                y: p.targetY,
+                radius: mejora.explosionRadius,
+                color: mejora.color || '#8B0000',
+                duration: 600 // Duración de la animación de explosión
+              });
+              console.log(`Animación de explosión emitida en (${p.targetX}, ${p.targetY})`);
+            }
+            
             // Special effect for roca_fangosa: create muddy ground
             if (p.mejoraId === 'roca_fangosa') {
               if (!muddyGroundsPorSala[sala.id]) muddyGroundsPorSala[sala.id] = [];
@@ -3214,6 +3453,38 @@ setInterval(async () => {
                 duration: 3000
               });
             }
+          } else if (p.mejoraId === 'ventisca') {
+            // Crear área de Ventisca
+            if (!ventiscasPorSala[sala.id]) ventiscasPorSala[sala.id] = [];
+            
+            console.log(`Creando Ventisca en (${p.targetX}, ${p.targetY})`);
+            
+            ventiscasPorSala[sala.id].push({
+              x: p.targetX,
+              y: p.targetY,
+              width: mejora.width || 300,
+              height: mejora.height || 200,
+              damage: mejora.danio || 20,
+              damageInterval: mejora.damageInterval || 500,
+              duration: mejora.duration || 2500,
+              slowAmount: mejora.effect?.slowAmount || 0.4,
+              slowDuration: mejora.effect?.slowDuration || 1500,
+              hitsToFreeze: mejora.effect?.hitsToFreeze || 4,
+              freezeDuration: mejora.effect?.freezeDuration || 1000,
+              owner: p.owner,
+              createdAt: Date.now(),
+              lastDamageTime: Date.now(),
+              affectedPlayers: {} // Rastrear golpes por jugador
+            });
+            
+            // Emitir al frontend para dibujar la ventisca
+            io.to(sala.id).emit('ventiscaCreated', {
+              x: p.targetX,
+              y: p.targetY,
+              width: mejora.width || 300,
+              height: mejora.height || 200,
+              duration: mejora.duration || 2500
+            });
           } else if (p.mejoraId === 'cuchilla_fria') {
             // Si llegó al destino, pero ya fue destruida por muro, no generar menores
             // Solo generar si no fue destruida por muro
@@ -3492,6 +3763,89 @@ setInterval(async () => {
         // If not in muddy and no slowUntil and no speedBoostUntil, ensure speed is DEFAULT
         jugador.speed = DEFAULT_SPEED;
       }
+      
+      // ❄️ Procesar Ventiscas - daño cada 0.5s, slow, y congelamiento
+      if (ventiscasPorSala[sala.id]) {
+        for (const ventisca of ventiscasPorSala[sala.id]) {
+          // Calcular posición del jugador relativa al centro de la ventisca
+          const dx = jugador.x - ventisca.x;
+          const dy = jugador.y - ventisca.y;
+          
+          // Aplicar rotación inversa para verificar si está dentro del rectángulo
+          const angle = ventisca.angle || 0;
+          const cos = Math.cos(-angle); // Rotación inversa
+          const sin = Math.sin(-angle);
+          const rotatedX = dx * cos - dy * sin;
+          const rotatedY = dx * sin + dy * cos;
+          
+          // Verificar si está dentro del rectángulo rotado
+          if (Math.abs(rotatedX) <= ventisca.width / 2 + 32 && Math.abs(rotatedY) <= ventisca.height / 2 + 32) {
+            // El jugador está dentro de la ventisca
+            
+            // Aplicar daño cada intervalo
+            if (now - ventisca.lastDamageTime >= ventisca.damageInterval) {
+              ventisca.lastDamageTime = now;
+              
+              // No dañar al dueño
+              if (jugador.nick !== ventisca.owner && !jugador.defeated) {
+                // Aplicar daño
+                jugador.lastAttacker = ventisca.owner;
+                applyDamage(jugador, ventisca.damage, io, sala.id, 'ventisca');
+                
+                // Rastrear golpes para congelamiento
+                if (!ventisca.affectedPlayers[jugador.nick]) {
+                  ventisca.affectedPlayers[jugador.nick] = {
+                    hits: 0,
+                    lastHitTime: 0
+                  };
+                }
+                
+                ventisca.affectedPlayers[jugador.nick].hits++;
+                ventisca.affectedPlayers[jugador.nick].lastHitTime = now;
+                
+                console.log(`Ventisca: ${jugador.nick} recibió golpe ${ventisca.affectedPlayers[jugador.nick].hits}/${ventisca.hitsToFreeze}`);
+                
+                // Aplicar slow (se resetea con cada golpe)
+                jugador.slowUntil = now + ventisca.slowDuration;
+                jugador.speed = Math.max(0, DEFAULT_SPEED * (1 - ventisca.slowAmount));
+                
+                // Verificar si debe congelarse (4 golpes)
+                if (ventisca.affectedPlayers[jugador.nick].hits >= ventisca.hitsToFreeze) {
+                  console.log(`${jugador.nick} ¡CONGELADO!`);
+                  
+                  // Congelar al jugador
+                  jugador.frozen = true;
+                  jugador.frozenUntil = now + ventisca.freezeDuration;
+                  jugador.speed = 0; // No puede moverse
+                  
+                  // Resetear contador de golpes
+                  ventisca.affectedPlayers[jugador.nick].hits = 0;
+                  
+                  // Emitir evento de congelamiento al frontend
+                  io.to(sala.id).emit('playerFrozen', {
+                    nick: jugador.nick,
+                    duration: ventisca.freezeDuration
+                  });
+                }
+              }
+            }
+          }
+        }
+      }
+      
+      // Descongelar jugador si el tiempo expiró
+      if (jugador.frozen && jugador.frozenUntil && now > jugador.frozenUntil) {
+        jugador.frozen = false;
+        jugador.frozenUntil = 0;
+        jugador.speed = DEFAULT_SPEED;
+        console.log(`${jugador.nick} descongelado`);
+        
+        io.to(sala.id).emit('playerUnfrozen', {
+          nick: jugador.nick
+        });
+      }
+      
+      // Procesar DOT (viejo sistema - mantener por compatibilidad)
       if (jugador.dotUntil && now <= jugador.dotUntil) {
         if (now - jugador.lastDotTime >= 1000) {
           applyDamage(jugador, jugador.dotDamage, io, sala.id, `dot_${jugador.dotType || 'unknown'}`);
@@ -3503,6 +3857,29 @@ setInterval(async () => {
         jugador.dotType = null;
         jugador.lastDotTime = 0;
       }
+      
+      // 🔥 Procesar nuevos efectos de DOT (sistema mejorado - soporta múltiples efectos)
+      if (!jugador.dotEffects) jugador.dotEffects = [];
+      for (let i = jugador.dotEffects.length - 1; i >= 0; i--) {
+        const dotEffect = jugador.dotEffects[i];
+        const dotElapsed = now - dotEffect.startTime;
+        
+        // Si el efecto expiró, removerlo
+        if (dotElapsed >= dotEffect.duration) {
+          jugador.dotEffects.splice(i, 1);
+          console.log(`Efecto DOT de ${dotEffect.elemento} expiró para ${jugador.nick}`);
+          continue;
+        }
+        
+        // Aplicar daño cada segundo
+        if (!dotEffect.lastTick) dotEffect.lastTick = dotEffect.startTime;
+        if (now - dotEffect.lastTick >= 1000) {
+          applyDamage(jugador, dotEffect.damage, io, sala.id, `dot_${dotEffect.elemento}`);
+          dotEffect.lastTick = now;
+          console.log(`DOT de ${dotEffect.elemento}: ${dotEffect.damage} daño aplicado a ${jugador.nick}`);
+        }
+      }
+      
       // Expiración de stacks eléctricos
       if (typeof jugador.electricStacks === 'number' && jugador.electricStacks > 0) {
         if (typeof jugador.lastElectricStackTime === 'number' && now - jugador.lastElectricStackTime > 3000) {
@@ -3604,11 +3981,21 @@ setInterval(async () => {
             // Colisión detectada, detener el dash sin rebote
             player.isDashing = false;
             
-            // Retroceder ligeramente en la dirección opuesta para salir de la colisión
-            const ang = Math.atan2(dy, dx);
-            const retreatDist = 5; // Pequeño retroceso para salir del muro
-            player.x -= Math.cos(ang) * retreatDist;
-            player.y -= Math.sin(ang) * retreatDist;
+            // Retroceder usando la normal del muro para garantizar que el jugador salga
+            const retreatDist = 30; // Retroceso más grande para asegurar que salga del muro
+            player.x += collision.normalX * retreatDist;
+            player.y += collision.normalY * retreatDist;
+            
+            // Verificar que la nueva posición esté dentro de los límites del mapa
+            player.x = Math.max(0, Math.min(2500, player.x));
+            player.y = Math.max(0, Math.min(1500, player.y));
+            
+            // Verificar si aún está en colisión y ajustar
+            const stillColliding = checkCollision(player.x, player.y, sala);
+            if (stillColliding) {
+              // Expulsar usando la función de expulsión
+              expelPlayerFromWall(player, sala);
+            }
             
             // Emitir evento de dash completado (por colisión con muro)
             io.to(sala.id).emit('playerDashCompleted', {
@@ -3637,9 +4024,41 @@ setInterval(async () => {
         }
       }
     }
+    
+    // 🚨 Verificar si algún jugador está atrapado dentro de un muro y expulsarlo
+    for (const player of jugadores) {
+      if (player.defeated) continue; // No verificar jugadores derrotados
+      
+      const wasExpelled = expelPlayerFromWall(player, sala);
+      
+      if (wasExpelled) {
+        // Notificar a todos los clientes que el jugador fue reposicionado
+        io.to(sala.id).emit('playerMoved', {
+          nick: player.nick,
+          x: player.x,
+          y: player.y
+        });
+        
+        // También emitir un evento específico de expulsión para feedback visual
+        io.to(sala.id).emit('playerExpelledFromWall', {
+          nick: player.nick,
+          x: player.x,
+          y: player.y
+        });
+      }
+    }
+    
     // Remove expired muddy grounds
     if (muddyGroundsPorSala[sala.id]) {
       muddyGroundsPorSala[sala.id] = muddyGroundsPorSala[sala.id].filter(muddy => now - muddy.createdAt < muddy.duration);
+    }
+    // ❄️ Remove expired ventiscas
+    if (ventiscasPorSala[sala.id]) {
+      const expiredVentiscas = ventiscasPorSala[sala.id].filter(v => now - v.createdAt >= v.duration);
+      if (expiredVentiscas.length > 0) {
+        console.log(`Eliminando ${expiredVentiscas.length} ventiscas expiradas`);
+      }
+      ventiscasPorSala[sala.id] = ventiscasPorSala[sala.id].filter(v => now - v.createdAt < v.duration);
     }
     // Remove expired walls (pero NUNCA borrar muros del mapa)
     if (murosPorSala[sala.id]) {
@@ -3665,6 +4084,7 @@ setInterval(async () => {
       // Limpiar casts y suelos fangosos
       if (castsPorSala[sala.id]) castsPorSala[sala.id] = [];
       if (muddyGroundsPorSala[sala.id]) muddyGroundsPorSala[sala.id] = [];
+      if (ventiscasPorSala[sala.id]) ventiscasPorSala[sala.id] = []; // ❄️ Limpiar ventiscas
       // 🗺️ Limpiar solo muros temporales, mantener bloques permanentes del mapa
       if (murosPorSala[sala.id]) {
         const bloquesMapa = murosPorSala[sala.id].filter(m => m.muroMapa === true);
@@ -3682,6 +4102,8 @@ setInterval(async () => {
         player.dotDamage = 0;
         player.dotType = null;
         player.lastDotTime = 0;
+        player.frozen = false; // ❄️ Descongelar
+        player.frozenUntil = 0; // ❄️ Resetear tiempo de congelamiento
         player.electricStacks = 0; // Resetear stacks de velocidad eléctrica
         player.electricSpeedBonus = 0; // Resetear bonus de velocidad eléctrica
         player.lastElectricStackTime = 0; // Resetear temporizador de stacks
@@ -3735,6 +4157,18 @@ setInterval(async () => {
           };
         });
         io.to(sala.id).emit('gameEnded', { stats: finalStats, winner: winnerNick });
+        
+        // 🧹 Limpiar TODOS los elementos de la sala cuando termina el juego
+        if (proyectilesPorSala[sala.id]) proyectilesPorSala[sala.id] = [];
+        if (laseresContinuosPorSala[sala.id]) laseresContinuosPorSala[sala.id] = [];
+        if (tornadosPorSala[sala.id]) tornadosPorSala[sala.id] = [];
+        if (castsPorSala[sala.id]) castsPorSala[sala.id] = [];
+        if (muddyGroundsPorSala[sala.id]) muddyGroundsPorSala[sala.id] = [];
+        if (holyGroundsPorSala[sala.id]) holyGroundsPorSala[sala.id] = [];
+        if (murosPorSala[sala.id]) {
+          murosPorSala[sala.id] = murosPorSala[sala.id].filter(m => m.muroMapa === true);
+        }
+        
       } else {
         // 🎮 Generar NUEVO escenario para la nueva ronda
         await crearEscenarioBatalla(sala.id, sala.round);

@@ -5,6 +5,12 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Editor de Mapas - Skill Clash</title>
   <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <script>
+    // Deshabilitar menú contextual del click derecho
+    document.addEventListener('contextmenu', function(e) {
+      e.preventDefault();
+    });
+  </script>
   <style>
     * {
       margin: 0;
@@ -257,6 +263,84 @@
       text-align: center;
     }
 
+    /* Paleta de colores */
+    .color-palette {
+      position: absolute;
+      bottom: 150px;
+      left: 20px;
+      background: rgba(26, 26, 46, 0.95);
+      backdrop-filter: blur(10px);
+      padding: 20px;
+      border-radius: 16px;
+      border: 2px solid rgba(139, 195, 74, 0.3);
+      z-index: 50;
+      box-shadow: 0 4px 20px rgba(0, 0, 0, 0.3);
+      display: none;
+    }
+
+    .color-palette.active {
+      display: block;
+    }
+
+    .color-palette h3 {
+      color: #8bc34a;
+      font-size: 14px;
+      margin-bottom: 15px;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    .color-grid {
+      display: grid;
+      grid-template-columns: repeat(6, 1fr);
+      gap: 10px;
+    }
+
+    .color-option {
+      width: 40px;
+      height: 40px;
+      border-radius: 8px;
+      cursor: pointer;
+      border: 3px solid transparent;
+      transition: all 0.2s ease;
+      position: relative;
+    }
+
+    .color-option:hover {
+      transform: scale(1.1);
+      border-color: rgba(255, 255, 255, 0.5);
+    }
+
+    .color-option.selected {
+      border-color: #8bc34a;
+      box-shadow: 0 0 15px rgba(139, 195, 74, 0.6);
+    }
+
+    .paint-size-control {
+      margin-top: 15px;
+      padding-top: 15px;
+      border-top: 1px solid rgba(139, 195, 74, 0.2);
+    }
+
+    .paint-size-control label {
+      color: rgba(255, 255, 255, 0.8);
+      font-size: 13px;
+      display: block;
+      margin-bottom: 8px;
+    }
+
+    .paint-size-control input[type="range"] {
+      width: 100%;
+      accent-color: #8bc34a;
+    }
+
+    .paint-size-value {
+      color: #8bc34a;
+      font-weight: 600;
+      font-size: 12px;
+    }
+
     /* Modal para guardar */
     .modal-overlay {
       display: none;
@@ -499,10 +583,30 @@
       <div class="tool-hotkey">5</div>
     </div>
 
+    <div class="tool-item" data-tool="paint">
+      <div class="tool-icon">🎨</div>
+      <div class="tool-name">Pintura</div>
+      <div class="tool-hotkey">6</div>
+    </div>
+
     <div class="tool-item" data-tool="eraser">
       <div class="tool-icon">🗑️</div>
       <div class="tool-name">Borrador</div>
       <div class="tool-hotkey">E</div>
+    </div>
+  </div>
+
+  <!-- Paleta de Colores -->
+  <div class="color-palette" id="colorPalette">
+    <h3>🎨 Colores del Suelo</h3>
+    <div class="color-grid" id="colorGrid">
+      <!-- Los colores se generarán dinámicamente -->
+    </div>
+    <div class="paint-size-control">
+      <label>
+        Tamaño del Pincel: <span class="paint-size-value" id="paintSizeValue">50</span>px
+      </label>
+      <input type="range" id="paintSizeSlider" min="30" max="150" value="50" step="10">
     </div>
   </div>
 

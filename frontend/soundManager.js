@@ -224,7 +224,8 @@ const ABILITY_SOUNDS = {
   'impulso_electrico': 'sonidos/impulsoelectrico.mp3',
   'embestida': 'sonidos/embestida.mp3',
   'salto_sombrio': 'sonidos/saltosombrio.mp3',
-  'tornado': 'sonidos/tornado.mp3'
+  'tornado': 'sonidos/tornado.mp3',
+  'super_meteoro': 'sonidos/meteoro.mp3' // Usa el mismo sonido que meteoro (puedes cambiarlo después)
 };
 
 // Cargar todos los sonidos de habilidades al iniciar

@@ -12,8 +12,11 @@ const ctx = canvas.getContext('2d');
 const editor = {
   blocks: [], // Array de bloques colocados
   spawns: [], // Array de spawns colocados (máximo 4)
+  paintTiles: [], // Array de tiles de pintura en el suelo
   currentTool: null, // Herramienta seleccionada
   currentRotation: 0, // Rotación actual en grados
+  currentPaintColor: '#4CAF50', // Color de pintura seleccionado
+  paintSize: 50, // Tamaño del pincel
   camera: { x: 0, y: 0, zoom: 1 }, // Cámara para pan y zoom
   isDragging: false, // Si está arrastrando la cámara
   dragStart: { x: 0, y: 0 },
@@ -303,34 +306,52 @@ function render() {
   // Dibujar cuadrícula
   drawGrid();
 
+  // Dibujar tiles de pintura PRIMERO (debajo de los bloques)
+  drawPaintTiles();
+
   // Dibujar bloques
   editor.blocks.forEach(block => drawBlock(block));
 
-  // Dibujar preview del bloque a colocar
-  if (editor.currentTool && editor.currentTool !== 'eraser' && editor.mousePos) {
-    const blockType = BLOCK_TYPES[editor.currentTool];
+  // Dibujar preview del bloque a colocar o del pincel
+  if (editor.currentTool && editor.mousePos) {
     const worldPos = screenToWorld(editor.mousePos.x, editor.mousePos.y);
-    
-    // Verificar si está dentro del área de trabajo
     const isInsideWorkArea = isPointInWorkArea(worldPos.x, worldPos.y);
     
-    const previewBlock = {
-      x: worldPos.x,
-      y: worldPos.y,
-      width: blockType.width,
-      height: blockType.height,
-      color: blockType.color,
-      shape: blockType.shape,
-      angle: editor.currentRotation * Math.PI / 180 // Convertir grados a radianes
-    };
-    
-    // Cambiar color si está fuera del área
-    if (!isInsideWorkArea) {
-      ctx.globalAlpha = 0.3;
+    if (editor.currentTool === 'paint') {
+      // Preview del pincel
+      const screenPos = worldToScreen(worldPos.x, worldPos.y);
+      ctx.save();
+      ctx.globalAlpha = isInsideWorkArea ? 0.5 : 0.2;
+      ctx.fillStyle = editor.currentPaintColor;
+      ctx.beginPath();
+      ctx.arc(screenPos.x, screenPos.y, editor.paintSize * editor.camera.zoom / 2, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.strokeStyle = 'white';
+      ctx.lineWidth = 2;
+      ctx.stroke();
+      ctx.restore();
+    } else if (editor.currentTool !== 'eraser') {
+      // Preview del bloque a colocar
+      const blockType = BLOCK_TYPES[editor.currentTool];
+      
+      const previewBlock = {
+        x: worldPos.x,
+        y: worldPos.y,
+        width: blockType.width,
+        height: blockType.height,
+        color: blockType.color,
+        shape: blockType.shape,
+        angle: editor.currentRotation * Math.PI / 180
+      };
+      
+      // Cambiar color si está fuera del área
+      if (!isInsideWorkArea) {
+        ctx.globalAlpha = 0.3;
+      }
+      
+      drawBlock(previewBlock, true);
+      ctx.globalAlpha = 1.0;
     }
-    
-    drawBlock(previewBlock, true);
-    ctx.globalAlpha = 1.0;
   }
 }
 
@@ -356,13 +377,19 @@ document.querySelectorAll('.tool-item').forEach(item => {
     item.classList.add('active');
     editor.currentTool = tool;
     
+    // Mostrar/ocultar paleta de colores
+    toggleColorPalette(tool === 'paint');
+    
     console.log('🔧 Herramienta seleccionada:', tool);
     
     // Actualizar UI
-    document.getElementById('currentTool').textContent = 
-      tool === 'eraser' ? 'Borrador' : BLOCK_TYPES[tool]?.name || 'Ninguna';
+    const toolName = tool === 'eraser' ? 'Borrador' : 
+                     tool === 'paint' ? 'Pintura' :
+                     BLOCK_TYPES[tool]?.name || 'Ninguna';
+    document.getElementById('currentTool').textContent = toolName;
     
-    canvas.style.cursor = tool === 'eraser' ? 'not-allowed' : 'crosshair';
+    canvas.style.cursor = tool === 'eraser' ? 'not-allowed' : 
+                          tool === 'paint' ? 'crosshair' : 'crosshair';
   });
 });
 
@@ -385,6 +412,7 @@ document.addEventListener('keydown', (e) => {
     '3': 'smallblock',
     '4': 'triangle',
     '5': 'spawn',
+    '6': 'paint',
     'e': 'eraser'
   };
   
@@ -573,6 +601,18 @@ canvas.addEventListener('mousedown', (e) => {
         render();
       }
     }
+    // Pintar en el suelo
+    else if (editor.currentTool === 'paint') {
+      // Verificar que esté dentro del área de trabajo
+      if (!isPointInWorkArea(worldPos.x, worldPos.y)) {
+        console.warn('⚠️ Intento de pintar fuera del área de trabajo');
+        return;
+      }
+      
+      paintAt(worldPos.x, worldPos.y);
+      render();
+      console.log('🎨 Pintado en:', worldPos);
+    }
     // Colocar bloque
     else if (editor.currentTool && BLOCK_TYPES[editor.currentTool]) {
       // Verificar que esté dentro del área de trabajo
@@ -664,9 +704,10 @@ document.getElementById('btnBack').addEventListener('click', () => {
 });
 
 document.getElementById('btnClear').addEventListener('click', () => {
-  if (editor.blocks.length > 0) {
+  if (editor.blocks.length > 0 || editor.paintTiles.length > 0) {
     if (confirm('¿Seguro que quieres limpiar todo el mapa?')) {
       editor.blocks = [];
+      editor.paintTiles = [];
       editor.selectedBlock = null;
       updateBlockCount();
       updateSpawnCount();
@@ -676,8 +717,8 @@ document.getElementById('btnClear').addEventListener('click', () => {
 });
 
 document.getElementById('btnSave').addEventListener('click', () => {
-  if (editor.blocks.length === 0) {
-    alert('⚠️ No hay bloques para guardar. Agrega algunos bloques primero.');
+  if (editor.blocks.length === 0 && editor.paintTiles.length === 0) {
+    alert('⚠️ No hay bloques ni pintura para guardar. Agrega algunos elementos primero.');
     return;
   }
   
@@ -723,6 +764,7 @@ document.getElementById('btnConfirmSave').addEventListener('click', async () => 
     
     // Limpiar editor
     editor.blocks = [];
+    editor.paintTiles = [];
     editor.selectedBlock = null;
     updateBlockCount();
     updateSpawnCount();
@@ -762,6 +804,12 @@ async function saveMap(mapName) {
       shape: block.shape,
       type: block.type,
       colision: true // Todos los bloques del mapa tienen colisión
+    })),
+    paintTiles: editor.paintTiles.map(tile => ({
+      x: Math.round(tile.x),
+      y: Math.round(tile.y),
+      color: tile.color,
+      size: tile.size
     }))
   };
   
@@ -849,9 +897,96 @@ updateBlockCount();
 updateSpawnCount();
 render();
 
+// ============================================
+// SISTEMA DE PINTURA DEL SUELO
+// ============================================
+
+// Paleta de colores disponibles
+const PAINT_COLORS = [
+  '#4CAF50', '#2196F3', '#F44336', '#FF9800', '#9C27B0', '#E91E63',
+  '#00BCD4', '#FFEB3B', '#795548', '#607D8B', '#8BC34A', '#FFC107',
+  '#3F51B5', '#FF5722', '#673AB7', '#009688', '#CDDC39', '#FF6F00'
+];
+
+// Generar paleta de colores
+function initColorPalette() {
+  const colorGrid = document.getElementById('colorGrid');
+  colorGrid.innerHTML = '';
+  
+  PAINT_COLORS.forEach((color, index) => {
+    const colorDiv = document.createElement('div');
+    colorDiv.className = 'color-option';
+    if (index === 0) colorDiv.classList.add('selected');
+    colorDiv.style.backgroundColor = color;
+    colorDiv.setAttribute('data-color', color);
+    
+    colorDiv.addEventListener('click', () => {
+      // Deseleccionar todos
+      document.querySelectorAll('.color-option').forEach(el => el.classList.remove('selected'));
+      // Seleccionar este
+      colorDiv.classList.add('selected');
+      editor.currentPaintColor = color;
+    });
+    
+    colorGrid.appendChild(colorDiv);
+  });
+}
+
+// Control del tamaño del pincel
+const paintSizeSlider = document.getElementById('paintSizeSlider');
+const paintSizeValue = document.getElementById('paintSizeValue');
+
+if (paintSizeSlider && paintSizeValue) {
+  paintSizeSlider.addEventListener('input', (e) => {
+    editor.paintSize = parseInt(e.target.value);
+    paintSizeValue.textContent = editor.paintSize;
+  });
+}
+
+// Mostrar/ocultar paleta según herramienta
+function toggleColorPalette(show) {
+  const colorPalette = document.getElementById('colorPalette');
+  if (show) {
+    colorPalette.classList.add('active');
+  } else {
+    colorPalette.classList.remove('active');
+  }
+}
+
+// Función para pintar en el suelo
+function paintAt(worldX, worldY) {
+  // Agregar un nuevo tile de pintura
+  editor.paintTiles.push({
+    x: worldX,
+    y: worldY,
+    color: editor.currentPaintColor,
+    size: editor.paintSize,
+    id: editor.nextId++
+  });
+}
+
+// Dibujar tiles de pintura
+function drawPaintTiles() {
+  editor.paintTiles.forEach(tile => {
+    const screenPos = worldToScreen(tile.x, tile.y);
+    
+    ctx.save();
+    ctx.globalAlpha = 0.6; // Semi-transparente
+    ctx.fillStyle = tile.color;
+    ctx.beginPath();
+    ctx.arc(screenPos.x, screenPos.y, tile.size * editor.camera.zoom / 2, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.restore();
+  });
+}
+
+// Inicializar paleta de colores
+initColorPalette();
+
 console.log('🎨 Editor de Mapas iniciado');
 console.log('Controles:');
-console.log('  - 1-4: Seleccionar herramientas');
+console.log('  - 1-5: Seleccionar herramientas');
+console.log('  - 6: Herramienta de pintura');
 console.log('  - R: Rotar');
 console.log('  - E: Borrador');
 console.log('  - Supr: Eliminar seleccionado');

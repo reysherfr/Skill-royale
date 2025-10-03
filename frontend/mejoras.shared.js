@@ -111,6 +111,11 @@ class Proyectil {
         this.drawHook(ctx, screenX, screenY, offsetX, offsetY);
         break;
 
+      case 'super_meteoro':
+        // Super Meteoro gigante
+        this.drawSuperMeteor(ctx, screenX, screenY);
+        break;
+
       default:
         // Diseño por defecto (círculo simple)
         ctx.beginPath();
@@ -874,6 +879,241 @@ class Proyectil {
     
     ctx.restore();
   }
+
+  // Super Meteoro - Meteoro gigante apocalíptico
+  drawSuperMeteor(ctx, x, y) {
+    const time = Date.now() * 0.004;
+    const pulseIntensity = Math.sin(time * 3) * 0.15 + 0.85;
+    
+    // Aura de calor masiva exterior (ondas de choque)
+    for (let ring = 0; ring < 4; ring++) {
+      const ringRadius = this.radius * (2.5 - ring * 0.4) * pulseIntensity;
+      const ringAlpha = (0.3 - ring * 0.06) * pulseIntensity;
+      
+      const heatGradient = ctx.createRadialGradient(x, y, ringRadius * 0.7, x, y, ringRadius);
+      heatGradient.addColorStop(0, `rgba(255, 140, 0, ${ringAlpha * 0.5})`);
+      heatGradient.addColorStop(0.5, `rgba(255, 69, 0, ${ringAlpha})`);
+      heatGradient.addColorStop(1, `rgba(139, 0, 0, 0)`);
+      
+      ctx.beginPath();
+      ctx.arc(x, y, ringRadius, 0, Math.PI * 2);
+      ctx.fillStyle = heatGradient;
+      ctx.fill();
+    }
+    
+    // Estela de fuego masiva (más larga y gruesa que el meteoro normal)
+    for (let i = 0; i < 15; i++) {
+      const trailOffset = i * 8;
+      const trailX = x - Math.cos(this.angle || -Math.PI / 2) * trailOffset;
+      const trailY = y - Math.sin(this.angle || -Math.PI / 2) * trailOffset;
+      const trailSize = this.radius * (1.2 - i * 0.06);
+      const alpha = 0.8 - i * 0.05;
+      
+      // Llamas turbulentas
+      const turbulence = Math.sin(time * 2 + i * 0.5) * 6;
+      
+      ctx.beginPath();
+      ctx.arc(trailX + turbulence, trailY, trailSize, 0, Math.PI * 2);
+      
+      const flameGradient = ctx.createRadialGradient(
+        trailX + turbulence, trailY, 0,
+        trailX + turbulence, trailY, trailSize
+      );
+      flameGradient.addColorStop(0, `rgba(255, 255, 200, ${alpha})`);
+      flameGradient.addColorStop(0.3, `rgba(255, 150, 0, ${alpha * 0.9})`);
+      flameGradient.addColorStop(0.7, `rgba(255, 69, 0, ${alpha * 0.7})`);
+      flameGradient.addColorStop(1, `rgba(139, 0, 0, 0)`);
+      
+      ctx.fillStyle = flameGradient;
+      ctx.shadowColor = '#FF4500';
+      ctx.shadowBlur = 20;
+      ctx.fill();
+    }
+    
+    ctx.shadowBlur = 0;
+    
+    // Partículas de fuego orbitando
+    for (let i = 0; i < 12; i++) {
+      const angle = (Math.PI * 2 * i / 12) + time * 2;
+      const orbitRadius = this.radius * (1.3 + Math.sin(time * 3 + i) * 0.2);
+      const particleX = x + Math.cos(angle) * orbitRadius;
+      const particleY = y + Math.sin(angle) * orbitRadius;
+      const particleSize = 8 + Math.sin(time * 4 + i) * 3;
+      
+      ctx.beginPath();
+      ctx.arc(particleX, particleY, particleSize, 0, Math.PI * 2);
+      
+      const particleGradient = ctx.createRadialGradient(
+        particleX, particleY, 0,
+        particleX, particleY, particleSize
+      );
+      particleGradient.addColorStop(0, '#FFFF00');
+      particleGradient.addColorStop(0.5, '#FF8C00');
+      particleGradient.addColorStop(1, 'rgba(255, 69, 0, 0)');
+      
+      ctx.fillStyle = particleGradient;
+      ctx.shadowColor = '#FF6600';
+      ctx.shadowBlur = 15;
+      ctx.fill();
+    }
+    
+    ctx.shadowBlur = 0;
+    
+    // Núcleo de roca gigante
+    ctx.save();
+    ctx.translate(x, y);
+    
+    // Roca oscura agrietada (forma irregular)
+    ctx.beginPath();
+    const points = 12;
+    for (let i = 0; i < points; i++) {
+      const angle = (Math.PI * 2 * i / points) + time * 0.5;
+      const radiusVar = this.radius * (0.9 + Math.sin(angle * 4 + time) * 0.1);
+      const px = Math.cos(angle) * radiusVar;
+      const py = Math.sin(angle) * radiusVar;
+      
+      if (i === 0) {
+        ctx.moveTo(px, py);
+      } else {
+        ctx.lineTo(px, py);
+      }
+    }
+    ctx.closePath();
+    
+    // Gradiente de roca caliente
+    const rockGradient = ctx.createRadialGradient(0, 0, 0, 0, 0, this.radius);
+    rockGradient.addColorStop(0, '#1a0a0a');
+    rockGradient.addColorStop(0.3, '#2b1a1a');
+    rockGradient.addColorStop(0.7, '#3d2020');
+    rockGradient.addColorStop(1, '#0d0505');
+    
+    ctx.fillStyle = rockGradient;
+    ctx.shadowColor = 'rgba(0, 0, 0, 0.8)';
+    ctx.shadowBlur = 25;
+    ctx.fill();
+    
+    ctx.shadowBlur = 0;
+    
+    // Grietas de lava masivas y brillantes
+    ctx.strokeStyle = '#FF4500';
+    ctx.lineWidth = 6;
+    ctx.shadowColor = '#FF6600';
+    ctx.shadowBlur = 20;
+    
+    for (let i = 0; i < 10; i++) {
+      const angle = (Math.PI * 2 * i / 10) + time;
+      const crackLength = this.radius * (0.8 + Math.sin(time * 2 + i) * 0.1);
+      
+      ctx.beginPath();
+      ctx.moveTo(0, 0);
+      ctx.lineTo(
+        Math.cos(angle) * crackLength,
+        Math.sin(angle) * crackLength
+      );
+      ctx.stroke();
+      
+      // Grietas secundarias
+      const subAngle = angle + 0.3;
+      ctx.beginPath();
+      ctx.moveTo(
+        Math.cos(angle) * crackLength * 0.5,
+        Math.sin(angle) * crackLength * 0.5
+      );
+      ctx.lineTo(
+        Math.cos(subAngle) * crackLength * 0.7,
+        Math.sin(subAngle) * crackLength * 0.7
+      );
+      ctx.stroke();
+    }
+    
+    // Lava burbujeante en las grietas (círculos brillantes)
+    ctx.shadowBlur = 15;
+    for (let i = 0; i < 8; i++) {
+      const angle = Math.PI * 2 * i / 8 + time;
+      const lavaX = Math.cos(angle) * this.radius * 0.6;
+      const lavaY = Math.sin(angle) * this.radius * 0.6;
+      const lavaSize = 10 + Math.sin(time * 5 + i) * 4;
+      
+      ctx.beginPath();
+      ctx.arc(lavaX, lavaY, lavaSize, 0, Math.PI * 2);
+      
+      const lavaGradient = ctx.createRadialGradient(lavaX, lavaY, 0, lavaX, lavaY, lavaSize);
+      lavaGradient.addColorStop(0, '#FFFF00');
+      lavaGradient.addColorStop(0.4, '#FF6600');
+      lavaGradient.addColorStop(1, '#8B0000');
+      
+      ctx.fillStyle = lavaGradient;
+      ctx.fill();
+    }
+    
+    ctx.shadowBlur = 0;
+    
+    // Núcleo incandescente central
+    const coreGradient = ctx.createRadialGradient(0, 0, 0, 0, 0, this.radius * 0.4);
+    coreGradient.addColorStop(0, 'rgba(255, 255, 150, 0.9)');
+    coreGradient.addColorStop(0.5, 'rgba(255, 140, 0, 0.6)');
+    coreGradient.addColorStop(1, 'rgba(255, 69, 0, 0)');
+    
+    ctx.beginPath();
+    ctx.arc(0, 0, this.radius * 0.4, 0, Math.PI * 2);
+    ctx.fillStyle = coreGradient;
+    ctx.shadowColor = '#FFFF00';
+    ctx.shadowBlur = 30;
+    ctx.fill();
+    
+    // Borde brillante de roca
+    ctx.shadowBlur = 0;
+    ctx.beginPath();
+    for (let i = 0; i < points; i++) {
+      const angle = (Math.PI * 2 * i / points) + time * 0.5;
+      const radiusVar = this.radius * (0.9 + Math.sin(angle * 4 + time) * 0.1);
+      const px = Math.cos(angle) * radiusVar;
+      const py = Math.sin(angle) * radiusVar;
+      
+      if (i === 0) {
+        ctx.moveTo(px, py);
+      } else {
+        ctx.lineTo(px, py);
+      }
+    }
+    ctx.closePath();
+    ctx.strokeStyle = '#8B0000';
+    ctx.lineWidth = 4;
+    ctx.stroke();
+    
+    // Destellos de energía
+    ctx.strokeStyle = '#FFD700';
+    ctx.lineWidth = 2;
+    ctx.shadowColor = '#FFFF00';
+    ctx.shadowBlur = 10;
+    
+    for (let i = 0; i < 6; i++) {
+      const angle = (Math.PI * 2 * i / 6) + time * 3;
+      const flashLength = this.radius * (0.3 + Math.sin(time * 8 + i) * 0.15);
+      
+      ctx.beginPath();
+      ctx.moveTo(0, 0);
+      ctx.lineTo(
+        Math.cos(angle) * flashLength,
+        Math.sin(angle) * flashLength
+      );
+      ctx.stroke();
+    }
+    
+    ctx.restore();
+    
+    // Ondas de choque pulsantes (animación de impacto)
+    const shockwaveRadius = this.radius * (1.5 + Math.sin(time * 4) * 0.3);
+    ctx.beginPath();
+    ctx.arc(x, y, shockwaveRadius, 0, Math.PI * 2);
+    ctx.strokeStyle = `rgba(255, 100, 0, ${0.4 * pulseIntensity})`;
+    ctx.lineWidth = 8;
+    ctx.shadowColor = '#FF4500';
+    ctx.shadowBlur = 20;
+    ctx.stroke();
+    
+    ctx.shadowBlur = 0;
+  }
 }
 // mejoras.shared.js
 // Archivo compartido para mejoras entre backend y frontend
@@ -1289,7 +1529,7 @@ MEJORAS.push({
   cooldown: 35000, // 35 segundos
   proyectilF: true,
   maxRange: 800, // Alcance del láser
-  radius: 10, // Grosor del láser
+  radius: 40, // Grosor del láser
   activacionRapida: false,
   elemento: 'laser',
   laserContinuo: true,
@@ -1299,6 +1539,61 @@ MEJORAS.push({
   wallDamageReduction: 0.5, // 50% de reducción de daño al atravesar muros
   canPenetrateWalls: true, // Puede atravesar muros
   description: 'Dispara un rayo láser que sigue tu puntero. Atraviesa muros (-50% daño). 20 daño/s, cura 5 vida/s al impactar. Dura 5s. CD: 35s, Rango: 800.'
+});
+
+// Nueva habilidad: Super Meteoro (Proyectil F)
+MEJORAS.push({
+  id: 'super_meteoro',
+  nombre: 'Super Meteoro',
+  color: '#8B0000', // rojo oscuro
+  velocidad: 15, // Velocidad de caída del meteoro
+  danio: 100, // Daño directo en el área de impacto
+  cooldown: 40000, // 40 segundos
+  proyectilF: true,
+  maxRange: 1200, // Rango de lanzamiento
+  radius: 250, // Radio del área de impacto directo
+  explosionRadius: 320, // Radio de la onda expansiva
+  explosionDamage: 45, // Daño de la onda expansiva
+  aimRange: 1200,
+  activacionRapida: false, // Requiere apuntar
+  elemento: 'fuego',
+  skyfall: true,
+  castTime: 1000, // 1 segundo de carga antes de que caiga
+  effect: {
+    type: 'dot',
+    damage: 10, // 10 de daño por segundo
+    duration: 4000 // 4 segundos de quemadura
+  },
+  descripcion: 'Invoca un super meteoro que cae del cielo tras 1s. Daño directo: 100 (radio 250), onda expansiva: 45 (radio 320). Quema a todos los impactados: 10 daño/s por 4s. CD: 40s, Rango: 1200.'
+});
+
+// Nueva habilidad: Ventisca (Proyectil F)
+MEJORAS.push({
+  id: 'ventisca',
+  nombre: 'Ventisca',
+  color: '#87CEEB', // Azul cielo
+  velocidad: 0, // No se mueve, es un área estática
+  danio: 20, // Daño por tick (cada 0.5s)
+  cooldown: 42000, // 42 segundos
+  proyectilF: true,
+  sonido: 'bolahielo.wav',
+  maxRange: 650, // Rango máximo de colocación
+  width: 400, // Ancho del área rectangular
+  height: 300, // Alto del área rectangular
+  aimRange: 650,
+  activacionRapida: false, // Requiere apuntar
+  elemento: 'hielo',
+  areaEffect: true, // Es un efecto de área
+  castTime: 700, // 0.7 segundos de cast
+  duration: 2500, // 2.5 segundos de duración
+  damageInterval: 500, // Daño cada 0.5 segundos
+  effect: {
+    slowAmount: 0.4, // 40% de slow
+    slowDuration: 1500, // 1.5 segundos de slow
+    hitsToFreeze: 4, // 4 impactos para congelar
+    freezeDuration: 1000 // 1 segundo congelado
+  },
+  descripcion: 'Invoca una ventisca helada en un área rectangular . Inflige 20 daño cada 0.5s durante 2.5s. Ralentiza 40% por 1.5s. 4 impactos congelan al enemigo por 1s. CD: 42s, Rango: 650.'
 });
 
 export { MEJORAS, Proyectil };

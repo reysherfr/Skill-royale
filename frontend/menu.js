@@ -388,11 +388,9 @@ async function mostrarStats() {
     const ctx = previewCanvas.getContext('2d');
     const user = window.ShopSystem ? window.ShopSystem.getUser() : JSON.parse(localStorage.getItem('batlesd_user'));
     let playerColor = '#f4c2a0';
-    let playerStats = { health: 200, damage: 0, speed: 5 };
     
     if (window.ShopSystem && user?.equipped) {
       playerColor = window.ShopSystem.getEquippedColor(user.equipped);
-      playerStats = window.ShopSystem.calculatePlayerStats(user.equipped);
     }
     
     // Dibujar círculo del personaje
@@ -410,28 +408,6 @@ async function mostrarStats() {
     ctx.stroke();
     
     characterPreviewSection.appendChild(previewCanvas);
-    
-    // Stats del personaje
-    const statsEquipped = document.createElement('div');
-    statsEquipped.className = 'stats-equipped-info';
-    statsEquipped.innerHTML = `
-      <div class="equipped-stat">
-        <span class="equipped-stat-icon">❤️</span>
-        <span class="equipped-stat-value">${playerStats.health}</span>
-        <span class="equipped-stat-label">Vida</span>
-      </div>
-      <div class="equipped-stat">
-        <span class="equipped-stat-icon">⚔️</span>
-        <span class="equipped-stat-value">+${playerStats.damage}</span>
-        <span class="equipped-stat-label">Daño</span>
-      </div>
-      <div class="equipped-stat">
-        <span class="equipped-stat-icon">🏃</span>
-        <span class="equipped-stat-value">${playerStats.speed.toFixed(1)}</span>
-        <span class="equipped-stat-label">Vel.</span>
-      </div>
-    `;
-    characterPreviewSection.appendChild(statsEquipped);
     
     statsModal.appendChild(characterPreviewSection);
 
@@ -820,15 +796,13 @@ async function mostrarStatsJugador(nick) {
   // Dibujar personaje con color equipado (por defecto si no podemos obtenerlo)
   const ctx = previewCanvas.getContext('2d');
   let playerColor = '#f4c2a0'; // Color por defecto
-  let playerStats = { health: 200, damage: 0, speed: 5 }; // Stats base por defecto
   
-  // Si el jugador tiene datos de items equipados, calcular sus stats
+  // Si el jugador tiene datos de items equipados, obtener el color
   if (stats.equipped && window.ShopSystem) {
     try {
       playerColor = window.ShopSystem.getEquippedColor(stats.equipped);
-      playerStats = window.ShopSystem.calculatePlayerStats(stats.equipped);
     } catch (e) {
-      console.log('No se pudieron calcular stats del jugador:', e);
+      console.log('No se pudo obtener el color del jugador:', e);
     }
   }
   
@@ -847,28 +821,6 @@ async function mostrarStatsJugador(nick) {
   ctx.stroke();
   
   characterPreviewSection.appendChild(previewCanvas);
-  
-  // Stats del personaje (stats base por ahora)
-  const statsEquipped = document.createElement('div');
-  statsEquipped.className = 'stats-equipped-info';
-  statsEquipped.innerHTML = `
-    <div class="equipped-stat">
-      <span class="equipped-stat-icon">❤️</span>
-      <span class="equipped-stat-value">${playerStats.health}</span>
-      <span class="equipped-stat-label">Vida</span>
-    </div>
-    <div class="equipped-stat">
-      <span class="equipped-stat-icon">⚔️</span>
-      <span class="equipped-stat-value">+${playerStats.damage}</span>
-      <span class="equipped-stat-label">Daño</span>
-    </div>
-    <div class="equipped-stat">
-      <span class="equipped-stat-icon">🏃</span>
-      <span class="equipped-stat-value">${playerStats.speed.toFixed(1)}</span>
-      <span class="equipped-stat-label">Vel.</span>
-    </div>
-  `;
-  characterPreviewSection.appendChild(statsEquipped);
   
   statsModal.appendChild(characterPreviewSection);
 

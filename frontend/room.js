@@ -53,6 +53,10 @@ function mostrarHUDAumentosRonda2() {
         from { opacity: 0; }
         to { opacity: 1; }
       }
+      @keyframes fadeOut {
+        from { opacity: 1; }
+        to { opacity: 0; }
+      }
       @keyframes slideInScale {
         from {
           opacity: 0;
@@ -141,6 +145,19 @@ function mostrarHUDAumentosRonda2() {
   grid.style.margin = '0 auto';
 
   let aumentoSeleccionado = null;
+  
+  // 🔒 Sistema de delay de 2 segundos para evitar clics accidentales
+  let selectionEnabled = false;
+  setTimeout(() => {
+    selectionEnabled = true;
+    // Habilitar visualmente los botones después del delay
+    Array.from(grid.children).forEach(child => {
+      const btn = child.querySelector('button');
+      btn.style.opacity = '1';
+      btn.style.pointerEvents = 'auto';
+    });
+  }, 2000);
+  
   aumentos.forEach((aum, idx) => {
     const btnWrapper = document.createElement('div');
     btnWrapper.style.position = 'relative';
@@ -163,6 +180,8 @@ function mostrarHUDAumentosRonda2() {
     btn.style.transition = 'all 0.3s cubic-bezier(0.34, 1.56, 0.64, 1)';
     btn.style.minWidth = '200px';
     btn.style.textShadow = '0 2px 10px rgba(0,0,0,0.3)';
+    btn.style.opacity = '0.5'; // 🔒 Iniciar semi-transparente
+    btn.style.pointerEvents = 'none'; // 🔒 Deshabilitar clics inicialmente
 
     // Efecto de brillo
     const shine = document.createElement('span');
@@ -236,6 +255,9 @@ function mostrarHUDAumentosRonda2() {
     };
 
     btn.onclick = () => {
+      // 🔒 Verificar que la selección esté habilitada
+      if (!selectionEnabled) return;
+      
       Array.from(grid.children).forEach(child => {
         const childBtn = child.querySelector('button');
         if (childBtn !== btn) {
@@ -313,11 +335,29 @@ function mostrarHUDAumentosRonda2() {
   timerDiv.style.WebkitBackgroundClip = 'text';
   timerDiv.style.WebkitTextFillColor = 'transparent';
   timerDiv.style.backgroundClip = 'text';
-  timerDiv.textContent = '⏱️ Tiempo restante: 15s';
+  timerDiv.textContent = '⏱️ Tiempo restante: 5s';
   timerContainer.appendChild(timerDiv);
+  
+  // 🔒 Mensaje de delay inicial
+  const delayMessage = document.createElement('div');
+  delayMessage.style.fontSize = '1.3rem';
+  delayMessage.style.fontWeight = '700';
+  delayMessage.style.color = '#ffeb3b';
+  delayMessage.style.marginTop = '12px';
+  delayMessage.style.textShadow = '0 2px 10px rgba(255, 235, 59, 0.6)';
+  delayMessage.textContent = '🔒 Espera 2 segundos para seleccionar...';
+  timerContainer.appendChild(delayMessage);
+  
+  // Ocultar mensaje después del delay
+  setTimeout(() => {
+    delayMessage.style.transition = 'opacity 0.3s';
+    delayMessage.style.opacity = '0';
+    setTimeout(() => delayMessage.remove(), 300);
+  }, 2000);
+  
   hud.appendChild(timerContainer);
 
-  let timeLeft = 15;
+  let timeLeft = 5;
   const timerInterval = setInterval(() => {
     timeLeft--;
     timerDiv.textContent = `⏱️ Tiempo restante: ${timeLeft}s`;
@@ -472,7 +512,32 @@ function mostrarHUDHabilidadesF() {
   timerDiv.style.letterSpacing = '2px';
   timerDiv.textContent = '⏱️ Tiempo restante: 10s';
   timerContainer.appendChild(timerDiv);
+  
+  // 🔒 Mensaje de delay inicial
+  const delayMessage = document.createElement('div');
+  delayMessage.style.fontSize = '1.5rem';
+  delayMessage.style.fontWeight = '700';
+  delayMessage.style.color = '#ffeb3b';
+  delayMessage.style.marginTop = '15px';
+  delayMessage.style.textShadow = '0 2px 15px rgba(255, 235, 59, 0.8)';
+  delayMessage.textContent = '🔒 Espera 2 segundos para seleccionar...';
+  timerContainer.appendChild(delayMessage);
+  
   hud.appendChild(timerContainer);
+  
+  // Habilitar selección después del delay
+  setTimeout(() => {
+    selectionEnabled = true;
+    delayMessage.style.transition = 'opacity 0.3s';
+    delayMessage.style.opacity = '0';
+    setTimeout(() => delayMessage.remove(), 300);
+    
+    // Habilitar visualmente todas las tarjetas
+    document.querySelectorAll('#hudHabilidadesF .card').forEach(card => {
+      card.style.opacity = '1';
+      card.style.pointerEvents = 'auto';
+    });
+  }, 2000);
 
   // Usar availableUpgrades del servidor (habilidades F)
   const habilidadesF = availableUpgrades || [];
@@ -487,12 +552,16 @@ function mostrarHUDHabilidadesF() {
 
   let habilidadSeleccionada = null;
   
+  // 🔒 Sistema de delay de 2 segundos para evitar clics accidentales
+  let selectionEnabled = false;
+  
   habilidadesF.forEach((hab, idx) => {
     const cardWrapper = document.createElement('div');
     cardWrapper.style.position = 'relative';
     cardWrapper.style.animation = `slideInScale 0.6s cubic-bezier(0.34, 1.56, 0.64, 1) ${idx * 0.15}s backwards`;
 
     const card = document.createElement('div');
+    card.className = 'card'; // 🔒 Agregar clase para selector
     card.style.width = '220px';
     card.style.padding = '35px 20px';
     card.style.borderRadius = '24px';
@@ -504,6 +573,8 @@ function mostrarHUDHabilidadesF() {
     card.style.overflow = 'visible';
     card.style.transition = 'all 0.4s cubic-bezier(0.34, 1.56, 0.64, 1)';
     card.style.backdropFilter = 'blur(8px)';
+    card.style.opacity = '0.5'; // 🔒 Iniciar semi-transparente
+    card.style.pointerEvents = 'none'; // 🔒 Deshabilitar clics inicialmente
 
     // Icono de la tecla F
     const keyIcon = document.createElement('div');
@@ -626,6 +697,9 @@ function mostrarHUDHabilidadesF() {
     };
 
     card.onclick = () => {
+      // 🔒 Verificar que la selección esté habilitada
+      if (!selectionEnabled) return;
+      
       // Deseleccionar otras tarjetas
       Array.from(grid.children).forEach(child => {
         const childCard = child.querySelector('div');
@@ -746,6 +820,7 @@ if (user && user.nick) {
 
 // Función wrapper para renderizar con debounce
 function scheduleRender(updatedSala) {
+  console.log('🔵 [DEBUG FRONTEND] scheduleRender llamado con', updatedSala?.players?.length || 0, 'jugadores');
   // Cancelar cualquier renderizado pendiente
   if (renderTimeout) {
     clearTimeout(renderTimeout);
@@ -781,6 +856,10 @@ socket.on('playerLeft', (updatedSala) => {
 
 // Escuchar cuando un jugador se une a la sala y actualizar la lista en tiempo real
 socket.on('playerJoined', (updatedSala) => {
+  console.log('🟢 [DEBUG FRONTEND] playerJoined recibido:', {
+    jugadores: updatedSala?.players?.length || 0,
+    nicks: updatedSala?.players?.map(p => p.nick) || []
+  });
   scheduleRender(updatedSala);
 });
 
@@ -934,14 +1013,23 @@ let meteoroAimingAngle = 0;
 let cuchillaAiming = false; // Si está apuntando Cuchilla fria
 let cuchillaAimingAngle = 0;
 let rocaFangosaAiming = false; // Si está apuntando Roca fangosa
+let superMeteoroAiming = false; // Si está apuntando Super Meteoro
+let ventiscaAiming = false; // Si está apuntando Ventisca
 let muroPiedraAiming = false; // Si está en modo preview de muro de piedra
 let ganchoAiming = false; // Si está en modo preview de gancho
 let spaceAiming = false; // Si está en modo preview de habilidad espacio
 let tumbas = []; // Array de tumbas { nick, x, y }
 let tumbaImage = null; // Imagen de la tumba
+
+// 🎯 Sistema de Kill Feed (como en FPS)
+const killFeed = []; // Array de { killer, victim, timestamp }
+const KILL_FEED_DURATION = 5000; // 5 segundos visible
+const KILL_FEED_MAX_ITEMS = 5; // Máximo 5 kills visibles
+
 let spectatorTarget = null; // Jugador al que estamos siguiendo en modo espectador
 let activeCasts = []; // Array de casts activos: [{ position: {x, y}, startTime, player, mejora }]
 let activeMuddyGrounds = []; // Array de suelos fangosos: [{ x, y, radius, duration, createdAt }]
+let activeVentiscas = []; // Array de ventiscas activas: [{ x, y, width, height, duration, createdAt }]
 let activeSacredGrounds = []; // Array de suelos sagrados: [{ x, y, radius, duration, createdAt, owner }]
 let activeLasers = []; // Array de láseres continuos activos
 let mostrarSoloProyectilQ = false;
@@ -1106,6 +1194,65 @@ function drawTumbas() {
   });
 }
 
+// 🎯 Función para añadir kill al feed
+function addKillToFeed(killer, victim) {
+  killFeed.unshift({
+    killer: killer,
+    victim: victim,
+    timestamp: Date.now()
+  });
+  
+  // Limitar a máximo de items
+  if (killFeed.length > KILL_FEED_MAX_ITEMS) {
+    killFeed.pop();
+  }
+}
+
+// 🎯 Función para renderizar el kill feed
+function renderKillFeed(ctx) {
+  const now = Date.now();
+  const startX = 20;
+  const startY = 60; // Debajo del indicador de ronda
+  const lineHeight = 35;
+  
+  // Limpiar kills antiguos
+  for (let i = killFeed.length - 1; i >= 0; i--) {
+    if (now - killFeed[i].timestamp > KILL_FEED_DURATION) {
+      killFeed.splice(i, 1);
+    }
+  }
+  
+  // Renderizar cada kill
+  killFeed.forEach((kill, index) => {
+    const y = startY + (index * lineHeight);
+    const age = now - kill.timestamp;
+    const opacity = Math.max(0, 1 - (age / KILL_FEED_DURATION));
+    
+    // Fondo semi-transparente
+    ctx.fillStyle = `rgba(0, 0, 0, ${0.6 * opacity})`;
+    ctx.fillRect(startX - 5, y - 22, 300, 30);
+    
+    // Borde
+    ctx.strokeStyle = `rgba(255, 59, 48, ${0.8 * opacity})`;
+    ctx.lineWidth = 2;
+    ctx.strokeRect(startX - 5, y - 22, 300, 30);
+    
+    // Texto del killer (en rojo)
+    ctx.font = 'bold 14px Arial';
+    ctx.fillStyle = `rgba(255, 59, 48, ${opacity})`;
+    ctx.fillText(kill.killer, startX, y);
+    
+    // Icono de calavera
+    const killerWidth = ctx.measureText(kill.killer).width;
+    ctx.fillStyle = `rgba(255, 255, 255, ${opacity})`;
+    ctx.fillText('💀', startX + killerWidth + 8, y);
+    
+    // Texto de la víctima (en gris)
+    ctx.fillStyle = `rgba(180, 180, 180, ${opacity})`;
+    ctx.fillText(kill.victim, startX + killerWidth + 35, y);
+  });
+}
+
 function drawPlayers() {
   if (!canvas) return;
   const localPlayer = players.find(p => p.nick === user.nick);
@@ -1215,6 +1362,45 @@ function drawPlayers() {
     ctx.textAlign = 'center';
     ctx.fillText(`${vida}/${maxHealth}`, relativeX, barY + barHeight - 2);
     
+    // 🧊 Efecto visual de congelación
+    if (player.frozen && player.frozenUntil > Date.now()) {
+      // Anillo de hielo exterior
+      ctx.beginPath();
+      ctx.arc(relativeX, relativeY, 38, 0, 2 * Math.PI);
+      ctx.strokeStyle = 'rgba(135, 206, 250, 0.8)'; // Azul cielo
+      ctx.lineWidth = 4;
+      ctx.stroke();
+      
+      // Anillo de hielo medio
+      ctx.beginPath();
+      ctx.arc(relativeX, relativeY, 42, 0, 2 * Math.PI);
+      ctx.strokeStyle = 'rgba(173, 216, 230, 0.6)'; // Azul claro
+      ctx.lineWidth = 3;
+      ctx.stroke();
+      
+      // Partículas de hielo alrededor
+      const numIceParticles = 8;
+      ctx.fillStyle = 'rgba(255, 255, 255, 0.9)';
+      for (let i = 0; i < numIceParticles; i++) {
+        const angle = (i / numIceParticles) * Math.PI * 2 + (Date.now() / 300);
+        const px = relativeX + Math.cos(angle) * 45;
+        const py = relativeY + Math.sin(angle) * 45;
+        const size = 3 + Math.sin(Date.now() / 200 + i) * 2;
+        ctx.beginPath();
+        ctx.arc(px, py, size, 0, 2 * Math.PI);
+        ctx.fill();
+      }
+      
+      // Texto "CONGELADO" encima
+      ctx.fillStyle = '#00BFFF';
+      ctx.font = 'bold 14px Roboto, Arial';
+      ctx.textAlign = 'center';
+      ctx.strokeStyle = '#FFF';
+      ctx.lineWidth = 3;
+      ctx.strokeText('¡CONGELADO!', relativeX, relativeY - 55);
+      ctx.fillText('¡CONGELADO!', relativeX, relativeY - 55);
+    }
+    
     // Restaurar opacidad después de dibujar jugador invisible
     if (isInvisible && player.nick === user.nick) {
       ctx.globalAlpha = 1.0;
@@ -1223,9 +1409,6 @@ function drawPlayers() {
 }
 import { Player, createPlayersFromSala } from './players.js';
 
-
-const playersList = document.getElementById('playersList');
-const roomInfo = document.getElementById('roomInfo');
 const startBtn = document.getElementById('startBtn');
 
 let canvas, ctx;
@@ -1334,8 +1517,14 @@ function handleMouseDown(e) {
   if (e.button !== 0) return; // Solo click izquierdo
   if (!canShoot) return; // Protección: no disparar si está en cooldown
   
-  // Si el jugador está derrotado, no puede disparar
+  // 🧊 Bloquear disparo si el jugador está congelado
   let lp = players.find(p => p.nick === user.nick);
+  if (lp && lp.frozen && lp.frozenUntil > Date.now()) {
+    console.log('⛔ Disparo bloqueado: jugador congelado');
+    return;
+  }
+  
+  // Si el jugador está derrotado, no puede disparar
   if (lp && lp.defeated) return;
   const now = performance.now();
   if (!mejoraSeleccionada || typeof mejoraSeleccionada.cooldown !== 'number' || mejoraSeleccionada.proyectilQ) {
@@ -1374,6 +1563,12 @@ function handleMouseDown(e) {
   const numPotenciadores = potenciadores.length;
   let velocidadFinal = mejoraSeleccionada.velocidad + (numPotenciadores * 8);
   let maxRangeFinal = mejoraSeleccionada.maxRange + (numPotenciadores * 150);
+  
+  // Aplicar aumento de rango para "golpe" con "agrandar"
+  if (mejoraSeleccionada.id === 'golpe') {
+    const agrandadores = mejorasJugador.filter(m => m.id === 'agrandar');
+    maxRangeFinal += agrandadores.length * 100; // +100 de rango por cada agrandar
+  }
 
   // Cancelar invisibilidad al disparar
   cancelInvisibilityOnShoot();
@@ -1422,6 +1617,76 @@ function resizeCanvas() {
       ctx.imageSmoothingQuality = 'low';
     }
   }
+}
+
+// 🏆 Función para mostrar el ganador de la ronda
+function mostrarGanadorRonda(ganador) {
+  return new Promise((resolve) => {
+    // Crear overlay oscuro
+    const overlay = document.createElement('div');
+    overlay.style.position = 'fixed';
+    overlay.style.top = '0';
+    overlay.style.left = '0';
+    overlay.style.width = '100%';
+    overlay.style.height = '100%';
+    overlay.style.background = 'rgba(0, 0, 0, 0.8)';
+    overlay.style.zIndex = '9998';
+    overlay.style.display = 'flex';
+    overlay.style.alignItems = 'center';
+    overlay.style.justifyContent = 'center';
+    overlay.style.animation = 'fadeIn 0.3s ease-out';
+    document.body.appendChild(overlay);
+    
+    // Contenedor del anuncio
+    const container = document.createElement('div');
+    container.style.textAlign = 'center';
+    container.style.animation = 'slideInScale 0.5s cubic-bezier(0.34, 1.56, 0.64, 1)';
+    overlay.appendChild(container);
+    
+    // Icono de corona
+    const crown = document.createElement('div');
+    crown.textContent = '👑';
+    crown.style.fontSize = '100px';
+    crown.style.marginBottom = '20px';
+    crown.style.filter = 'drop-shadow(0 0 30px rgba(255, 215, 0, 0.8))';
+    crown.style.animation = 'bounce 1s ease-in-out infinite';
+    container.appendChild(crown);
+    
+    // Texto "GANADOR DE LA RONDA"
+    const label = document.createElement('div');
+    label.textContent = 'GANADOR DE LA RONDA';
+    label.style.fontSize = '32px';
+    label.style.fontWeight = '900';
+    label.style.color = '#FFD700';
+    label.style.letterSpacing = '3px';
+    label.style.textShadow = '0 0 20px rgba(255, 215, 0, 0.8), 0 4px 6px rgba(0,0,0,0.5)';
+    label.style.marginBottom = '15px';
+    container.appendChild(label);
+    
+    // Nombre del ganador
+    const winnerName = document.createElement('div');
+    winnerName.textContent = ganador;
+    winnerName.style.fontSize = '56px';
+    winnerName.style.fontWeight = '900';
+    winnerName.style.background = 'linear-gradient(90deg, #FFD700, #FFF59D, #FFD700)';
+    winnerName.style.backgroundSize = '200% auto';
+    winnerName.style.WebkitBackgroundClip = 'text';
+    winnerName.style.WebkitTextFillColor = 'transparent';
+    winnerName.style.backgroundClip = 'text';
+    winnerName.style.animation = 'shimmer 2s linear infinite';
+    winnerName.style.textShadow = 'none';
+    winnerName.style.filter = 'drop-shadow(0 4px 8px rgba(0,0,0,0.5))';
+    container.appendChild(winnerName);
+    
+    // Eliminar después de 2 segundos
+    setTimeout(() => {
+      overlay.style.animation = 'fadeOut 0.3s ease-out';
+      setTimeout(() => {
+        overlay.remove();
+        resolve();
+      }, 300);
+    }, 2000);
+  });
 }
 
 function mostrarHUDRondas() {
@@ -1861,16 +2126,38 @@ function gameLoop() {
       explosions.splice(i, 1);
     }
   }
+  
+  // 🧊 Descongelar jugadores cuando expire el tiempo
+  const currentTime = Date.now();
+  for (const player of players) {
+    if (player.frozen && player.frozenUntil && currentTime >= player.frozenUntil) {
+      player.frozen = false;
+      player.frozenUntil = null;
+      console.log(`${player.nick} ya no está congelado`);
+    }
+  }
+  
   // Actualizar HUD de cooldowns
   actualizarHUDCooldowns();
   drawMap();
   drawTumbas(); // Dibujar tumbas antes de los jugadores
   drawPlayers();
+  // 🎯 Renderizar kill feed
+  renderKillFeed(ctx);
   // Usar requestAnimationFrame para actualizaciones más suaves
   gameLoopId = requestAnimationFrame(gameLoop);
 }
 
 function initGame() {
+  // 🧹 Limpiar TODOS los elementos al iniciar el juego para evitar persistencia entre partidas
+  tornados = [];
+  activeLasers = [];
+  activeMuddyGrounds = [];
+  activeVentiscas = []; // ❄️ Limpiar ventiscas
+  activeSacredGrounds = [];
+  tumbas = [];
+  explosions.length = 0;
+  
   // Limpiar intervalos anteriores para evitar acumulación
   if (gameLoopId) {
     cancelAnimationFrame(gameLoopId);
@@ -2205,10 +2492,19 @@ function drawMap() {
     const ganchoMejora = mejorasJugador.find(m => m.id === 'gancho');
     const localPlayer = players.find(p => p.nick === user.nick);
     if (ganchoMejora && localPlayer) {
-      // Círculo de rango máximo
       const centerX = localPlayer.x - offsetX;
       const centerY = localPlayer.y - offsetY;
       
+      // Calcular ángulo hacia el mouse
+      const dx = mouseX - centerX;
+      const dy = mouseY - centerY;
+      const angle = Math.atan2(dy, dx);
+      
+      // 🪝 Gancho SIEMPRE a distancia máxima fija (como meteoro)
+      const targetMouseX = centerX + Math.cos(angle) * ganchoMejora.maxRange;
+      const targetMouseY = centerY + Math.sin(angle) * ganchoMejora.maxRange;
+      
+      // Círculo de rango máximo (solo visual)
       ctx.save();
       ctx.strokeStyle = '#696969';
       ctx.lineWidth = 3;
@@ -2219,22 +2515,7 @@ function drawMap() {
       ctx.setLineDash([]);
       ctx.restore();
       
-      // Línea de trayectoria del gancho
-      let targetMouseX = mouseX;
-      let targetMouseY = mouseY;
-      
-      // Limitar a rango máximo
-      const dx = targetMouseX - centerX;
-      const dy = targetMouseY - centerY;
-      const dist = Math.sqrt(dx * dx + dy * dy);
-      const angle = Math.atan2(dy, dx);
-      
-      if (dist > ganchoMejora.maxRange) {
-        targetMouseX = centerX + Math.cos(angle) * ganchoMejora.maxRange;
-        targetMouseY = centerY + Math.sin(angle) * ganchoMejora.maxRange;
-      }
-      
-      // Dibujar línea de trayectoria
+      // Dibujar línea de trayectoria SIEMPRE a máximo rango
       ctx.save();
       ctx.strokeStyle = 'rgba(105, 105, 105, 0.6)';
       ctx.lineWidth = 2;
@@ -2246,7 +2527,7 @@ function drawMap() {
       ctx.setLineDash([]);
       ctx.restore();
       
-      // Dibujar preview del gancho en el destino
+      // Dibujar preview del gancho en el destino (siempre a máximo rango)
       ctx.save();
       ctx.globalAlpha = 0.7;
       ctx.translate(targetMouseX, targetMouseY);
@@ -2616,6 +2897,122 @@ function drawMap() {
       ctx.restore();
     }
   }
+  
+  // Si está apuntando Super Meteoro, dibujar círculo de rango
+  if (superMeteoroAiming && mejoraFSeleccionada && mejoraFSeleccionada.nombre === 'Super Meteoro') {
+    const localPlayer = players.find(p => p.nick === user.nick);
+    if (localPlayer) {
+      const aimingRange = mejoraFSeleccionada.aimRange || 1200;
+      const centerX = localPlayer.x - offsetX;
+      const centerY = localPlayer.y - offsetY;
+      ctx.save();
+      ctx.strokeStyle = '#8B0000'; // Rojo oscuro
+      ctx.lineWidth = 4;
+      ctx.setLineDash([12, 6]); // Línea punteada
+      ctx.beginPath();
+      ctx.arc(centerX, centerY, aimingRange, 0, 2 * Math.PI);
+      ctx.stroke();
+      ctx.setLineDash([]); // Resetear
+      ctx.restore();
+      // Dibujar círculo de impacto directo en la posición del mouse
+      const modifiedRadius = getMejoraRadius(mejoraFSeleccionada, localPlayer);
+      ctx.save();
+      ctx.beginPath();
+      ctx.arc(mouseX, mouseY, modifiedRadius, 0, 2 * Math.PI);
+      ctx.fillStyle = 'rgba(139, 0, 0, 0.3)'; // Rojo oscuro transparente (área de impacto)
+      ctx.fill();
+      ctx.strokeStyle = 'rgba(255, 69, 0, 0.7)'; // Naranja brillante
+      ctx.lineWidth = 3;
+      ctx.stroke();
+      ctx.restore();
+      
+      // Dibujar círculo de onda expansiva
+      if (mejoraFSeleccionada.explosionRadius) {
+        ctx.save();
+        ctx.beginPath();
+        ctx.arc(mouseX, mouseY, mejoraFSeleccionada.explosionRadius, 0, 2 * Math.PI);
+        ctx.strokeStyle = 'rgba(255, 140, 0, 0.5)'; // Naranja menos intenso
+        ctx.lineWidth = 2;
+        ctx.setLineDash([8, 4]);
+        ctx.stroke();
+        ctx.setLineDash([]);
+        ctx.restore();
+      }
+    }
+  }
+  
+  // Si está apuntando Ventisca, dibujar área rectangular de preview
+  if (ventiscaAiming && mejoraFSeleccionada && mejoraFSeleccionada.nombre === 'Ventisca') {
+    const localPlayer = players.find(p => p.nick === user.nick);
+    if (localPlayer) {
+      const aimingRange = mejoraFSeleccionada.aimRange || 650;
+      const centerX = localPlayer.x - offsetX;
+      const centerY = localPlayer.y - offsetY;
+      
+      // Círculo de rango máximo
+      ctx.save();
+      ctx.strokeStyle = '#87CEEB'; // Azul cielo
+      ctx.lineWidth = 3;
+      ctx.setLineDash([10, 5]); // Línea punteada
+      ctx.beginPath();
+      ctx.arc(centerX, centerY, aimingRange, 0, 2 * Math.PI);
+      ctx.stroke();
+      ctx.setLineDash([]); // Resetear
+      ctx.restore();
+      
+      // Calcular posición del mouse en el mundo
+      const mouseWorldX = mouseX + offsetX;
+      const mouseWorldY = mouseY + offsetY;
+      const dx = mouseWorldX - localPlayer.x;
+      const dy = mouseWorldY - localPlayer.y;
+      const distToMouse = Math.sqrt(dx * dx + dy * dy);
+      
+      // Limitar la posición del preview al rango máximo
+      let previewX, previewY;
+      if (distToMouse > aimingRange) {
+        const angle = Math.atan2(dy, dx);
+        previewX = localPlayer.x + Math.cos(angle) * aimingRange;
+        previewY = localPlayer.y + Math.sin(angle) * aimingRange;
+      } else {
+        previewX = mouseWorldX;
+        previewY = mouseWorldY;
+      }
+      
+      // Dibujar rectángulo de área de ventisca en la posición del mouse
+      const areaWidth = mejoraFSeleccionada.width || 300;
+      const areaHeight = mejoraFSeleccionada.height || 200;
+      
+      // Calcular ángulo de rotación basado en la dirección desde el jugador
+      const angleToMouse = Math.atan2(dy, dx);
+      
+      ctx.save();
+      ctx.translate(previewX - offsetX, previewY - offsetY);
+      ctx.rotate(angleToMouse); // Rotar el rectángulo hacia donde apunta el jugador
+      
+      // Área de efecto (relleno)
+      ctx.fillStyle = 'rgba(135, 206, 235, 0.25)'; // Azul cielo transparente
+      ctx.fillRect(-areaWidth / 2, -areaHeight / 2, areaWidth, areaHeight);
+      
+      // Borde del área
+      ctx.strokeStyle = 'rgba(0, 191, 255, 0.8)'; // Azul más brillante
+      ctx.lineWidth = 3;
+      ctx.strokeRect(-areaWidth / 2, -areaHeight / 2, areaWidth, areaHeight);
+      
+      // Efecto de copos de nieve en el preview (estático)
+      ctx.fillStyle = 'rgba(255, 255, 255, 0.6)';
+      for (let i = 0; i < 15; i++) {
+        const snowX = (Math.random() - 0.5) * areaWidth * 0.8;
+        const snowY = (Math.random() - 0.5) * areaHeight * 0.8;
+        const snowSize = 2 + Math.random() * 2;
+        ctx.beginPath();
+        ctx.arc(snowX, snowY, snowSize, 0, 2 * Math.PI);
+        ctx.fill();
+      }
+      
+      ctx.restore();
+    }
+  }
+  
   // Si está apuntando Cuchilla fria, dibujar línea y las 3 trayectorias menores
   if (cuchillaAiming && mejoraQSeleccionada && mejoraQSeleccionada.nombre === 'Cuchilla fria') {
     const localPlayer = players.find(p => p.nick === user.nick);
@@ -2755,49 +3152,84 @@ function drawMap() {
     const castY = cast.position.y - offsetY;
     const localPlayer = players.find(p => p.nick === cast.player);
     const modifiedRadius = localPlayer ? getMejoraRadius(cast.mejora, localPlayer) : (cast.mejora.radius || 20);
+    
+    // Dibujar borde del cast según el tipo de habilidad
+    ctx.save();
     if (cast.mejora.id === 'muro_piedra') {
       // Usar el ángulo guardado en la mejora para el muro de carga
       let angle = cast.mejora.lastCastAngle !== undefined ? cast.mejora.lastCastAngle : 0;
       // Dibujar óvalo de fondo
-      ctx.save();
       ctx.strokeStyle = cast.mejora.color;
       ctx.lineWidth = 3;
-      if (cast.mejora.width && cast.mejora.height) {
-        ctx.translate(castX, castY);
-  ctx.rotate(angle);
+      ctx.translate(castX, castY);
+      ctx.rotate(angle);
+      ctx.beginPath();
+      ctx.ellipse(
+        0,
+        0,
+        cast.mejora.width,
+        cast.mejora.height,
+        0,
+        0,
+        2 * Math.PI
+      );
+      ctx.stroke();
+      ctx.setTransform(1, 0, 0, 1, 0, 0);
+    } else if (cast.mejora.id === 'roca_fangosa') {
+      ctx.strokeStyle = 'saddlebrown';
+      ctx.lineWidth = 3;
+      ctx.beginPath();
+      ctx.arc(castX, castY, modifiedRadius, 0, 2 * Math.PI);
+      ctx.stroke();
+    } else if (cast.mejora.id === 'super_meteoro') {
+      // Super Meteoro - círculos concéntricos (impacto + explosión)
+      ctx.strokeStyle = '#8B0000';
+      ctx.lineWidth = 3;
+      ctx.beginPath();
+      ctx.arc(castX, castY, modifiedRadius, 0, 2 * Math.PI);
+      ctx.stroke();
+      // Círculo de explosión exterior
+      if (cast.mejora.explosionRadius) {
         ctx.beginPath();
-        ctx.ellipse(
-          0,
-          0,
-          cast.mejora.width,
-          cast.mejora.height,
-          0,
-          0,
-          2 * Math.PI
-        );
+        ctx.arc(castX, castY, cast.mejora.explosionRadius, 0, 2 * Math.PI);
+        ctx.strokeStyle = 'rgba(255, 140, 0, 0.7)';
+        ctx.lineWidth = 2;
         ctx.stroke();
-        ctx.setTransform(1, 0, 0, 1, 0, 0);
-      } else if (cast.mejora.id === 'roca_fangosa') {
-        ctx.beginPath();
-        ctx.arc(castX, castY, modifiedRadius, 0, 2 * Math.PI);
-        ctx.stroke();
-      } else {
-        ctx.strokeRect(castX - modifiedRadius, castY - modifiedRadius, modifiedRadius * 2, modifiedRadius * 2);
       }
-      ctx.restore();
-      // Óvalo de progreso (relleno)
-      ctx.save();
+    } else if (cast.mejora.id === 'ventisca') {
+      // Ventisca - rectángulo de borde con rotación
+      const w = cast.mejora.width || 300;
+      const h = cast.mejora.height || 200;
+      const ventiscaAngle = cast.mejora.lastCastAngle !== undefined ? cast.mejora.lastCastAngle : 0;
+      
+      ctx.translate(castX, castY);
+      ctx.rotate(ventiscaAngle);
+      ctx.strokeStyle = 'rgba(70, 130, 180, 0.9)'; // Azul acero
+      ctx.lineWidth = 3;
+      ctx.strokeRect(-w/2, -h/2, w, h);
+      ctx.setTransform(1, 0, 0, 1, 0, 0); // Reset transform
+    } else {
+      // Cast genérico
+      ctx.strokeStyle = 'saddlebrown';
+      ctx.lineWidth = 3;
+      ctx.strokeRect(castX - modifiedRadius, castY - modifiedRadius, modifiedRadius * 2, modifiedRadius * 2);
+    }
+    ctx.restore();
+    
+    // Dibujar relleno del cast según el tipo de habilidad
+    ctx.save();
+    if (cast.mejora.id === 'muro_piedra') {
+      let angle = cast.mejora.lastCastAngle !== undefined ? cast.mejora.lastCastAngle : 0;
       ctx.fillStyle = 'rgba(139, 69, 43, 0.5)'; // color similar al muro
-      if (cast.mejora.width && cast.mejora.height) {
-        ctx.translate(castX, castY);
-        ctx.rotate(angle);
-        ctx.beginPath();
-        ctx.ellipse(
-          0,
-          0,
-          cast.mejora.width * progress,
-          cast.mejora.height * progress,
-          0,
+      ctx.translate(castX, castY);
+      ctx.rotate(angle);
+      ctx.beginPath();
+      ctx.ellipse(
+        0,
+        0,
+        cast.mejora.width * progress,
+        cast.mejora.height * progress,
+        0,
           0,
           2 * Math.PI
         );
@@ -2807,32 +3239,45 @@ function drawMap() {
         ctx.beginPath();
         ctx.arc(castX, castY, modifiedRadius * progress, 0, 2 * Math.PI);
         ctx.fill();
+      } else if (cast.mejora.id === 'super_meteoro') {
+        // Llenar área de impacto directo
+        ctx.fillStyle = 'rgba(139, 0, 0, 0.5)'; // Rojo oscuro
+        ctx.beginPath();
+        ctx.arc(castX, castY, modifiedRadius * progress, 0, 2 * Math.PI);
+        ctx.fill();
+        // Llenar área de explosión
+        if (cast.mejora.explosionRadius) {
+          ctx.fillStyle = 'rgba(255, 69, 0, 0.3)'; // Naranja transparente
+          ctx.beginPath();
+          ctx.arc(castX, castY, cast.mejora.explosionRadius * progress, 0, 2 * Math.PI);
+          ctx.fill();
+        }
+      } else if (cast.mejora.id === 'ventisca') {
+        // Llenar área rectangular de Ventisca con rotación
+        const w = cast.mejora.width || 300;
+        const h = cast.mejora.height || 200;
+        const ventiscaAngle = cast.mejora.lastCastAngle !== undefined ? cast.mejora.lastCastAngle : 0;
+        
+        ctx.fillStyle = 'rgba(135, 206, 250, 0.4)'; // Azul cielo transparente
+        ctx.translate(castX, castY);
+        ctx.rotate(ventiscaAngle);
+        ctx.fillRect(-(w/2) * progress, -(h/2) * progress, w * progress, h * progress);
+        // Borde
+        ctx.strokeStyle = 'rgba(70, 130, 180, 0.8)'; // Azul acero
+        ctx.lineWidth = 2;
+        ctx.strokeRect(-(w/2) * progress, -(h/2) * progress, w * progress, h * progress);
+        ctx.setTransform(1, 0, 0, 1, 0, 0); // Reset transform
       } else {
+        ctx.fillStyle = 'rgba(139, 69, 19, 0.5)'; // saddlebrown con alpha
         ctx.fillRect(castX - modifiedRadius * progress, castY - modifiedRadius * progress, modifiedRadius * 2 * progress, modifiedRadius * 2 * progress);
       }
       ctx.restore();
-    } else {
-      // Círculo de fondo
-      ctx.save();
-      ctx.beginPath();
-  ctx.arc(castX, castY, modifiedRadius, 0, 2 * Math.PI);
-      ctx.strokeStyle = 'saddlebrown';
-      ctx.lineWidth = 3;
-      ctx.stroke();
-      ctx.restore();
-      // Círculo de progreso (relleno)
-      ctx.save();
-      ctx.beginPath();
-  ctx.arc(castX, castY, modifiedRadius * progress, 0, 2 * Math.PI);
-      ctx.fillStyle = 'rgba(139, 69, 19, 0.5)'; // saddlebrown con alpha
-      ctx.fill();
-      ctx.restore();
-    }
+    
     // Si terminó el cast, emitir proyectil o colocar muro (solo si es el cast del jugador local)
     if (progress >= 1) {
-      if (cast.player === user.nick) {
-        if (cast.mejora.id === 'muro_piedra') {
-          // Emitir para que el backend cree el muro
+      if (cast.mejora.id === 'muro_piedra') {
+        // Emitir para que el backend cree el muro (solo el jugador local)
+        if (cast.player === user.nick) {
           const localPlayer = players.find(p => p.nick === user.nick);
           if (localPlayer) {
             cancelInvisibilityOnShoot();
@@ -2849,42 +3294,82 @@ function drawMap() {
               skillShot: true
             });
           }
-        } else {
-          const localPlayer = players.find(p => p.nick === user.nick);
-          if (localPlayer) {
-            // 🔊 Reproducir sonido cuando la roca fangosa impacta en el suelo
-            if (cast.mejora.id === 'roca_fangosa') {
-              if (cast.player === user.nick) {
-                // Sonido propio - volumen normal
-                if (typeof playAbilitySound === 'function') {
-                  playAbilitySound('roca_fangosa', 0.6);
-                }
-              } else {
+        }
+      } else if (cast.mejora.id === 'ventisca') {
+        // Para Ventisca: crear directamente sin proyectil
+        const localPlayer = players.find(p => p.nick === user.nick);
+        if (localPlayer && cast.player === user.nick) {
+          // 🔊 Reproducir sonido de Ventisca
+          if (typeof playAbilitySound === 'function') {
+            playAbilitySound('ventisca', 0.7);
+          }
+          
+          console.log('Ventisca: Creando área directamente', cast.position);
+          cancelInvisibilityOnShoot();
+          
+          // Obtener el ángulo guardado en la mejora
+          const ventiscaAngle = cast.mejora.lastCastAngle !== undefined ? cast.mejora.lastCastAngle : 0;
+          
+          // Emitir evento especial para crear Ventisca inmediatamente
+          socket.emit('createVentisca', {
+            roomId,
+            x: cast.position.x,
+            y: cast.position.y,
+            owner: cast.player,
+            mejoraId: cast.mejora.id,
+            angle: ventiscaAngle // Enviar el ángulo de rotación
+          });
+        }
+      } else {
+        // Para roca fangosa y super meteoro
+        const localPlayer = players.find(p => p.nick === user.nick);
+        if (localPlayer) {
+          // 🔊 Reproducir sonido cuando la roca fangosa o super meteoro impactan en el suelo
+          if (cast.mejora.id === 'roca_fangosa') {
+            if (cast.player === user.nick) {
+              // Sonido propio - volumen normal
+              if (typeof playAbilitySound === 'function') {
+                playAbilitySound('roca_fangosa', 0.6);
+              }
+            } else {
+              // Sonido de otro jugador - con proximidad
+              if (typeof playAbilitySoundWithProximity === 'function' && typeof calculateDistance === 'function') {
+                const distance = calculateDistance(localPlayer.x, localPlayer.y, cast.position.x, cast.position.y);
+                playAbilitySoundWithProximity('roca_fangosa', distance, 800, 0.6);
+              }
+            }
+          } else if (cast.mejora.id === 'super_meteoro') {
+            if (cast.player === user.nick) {
+              // Sonido propio - volumen mayor para mayor impacto
+              if (typeof playAbilitySound === 'function') {
+                playAbilitySound('meteoro', 0.8);
+              }
+            } else {
                 // Sonido de otro jugador - con proximidad
                 if (typeof playAbilitySoundWithProximity === 'function' && typeof calculateDistance === 'function') {
                   const distance = calculateDistance(localPlayer.x, localPlayer.y, cast.position.x, cast.position.y);
-                  playAbilitySoundWithProximity('roca_fangosa', distance, 800, 0.6);
+                  playAbilitySoundWithProximity('meteoro', distance, 1000, 0.8);
                 }
               }
-            }
-            
-            // Solo el jugador que lanzó el cast emite el shootProjectile
-            if (cast.player === user.nick) {
-              cancelInvisibilityOnShoot();
-              socket.emit('shootProjectile', {
-                roomId,
-                x: localPlayer.x,
-                y: localPlayer.y,
-                angle: 0, // No importa para skyfall
-                mejoraId: cast.mejora.id,
-                velocidad: cast.mejora.velocidad,
-                owner: cast.player,
-                targetX: cast.position.x,
-                targetY: cast.position.y,
-                skillShot: true,
-                skyfall: true
-              });
-            }
+          }
+          
+          // Solo el jugador que lanzó el cast emite el shootProjectile
+          if (cast.player === user.nick) {
+            console.log('Super Meteoro/Roca Fangosa: Emitiendo proyectil', cast.mejora.id);
+            cancelInvisibilityOnShoot();
+            socket.emit('shootProjectile', {
+              roomId,
+              x: localPlayer.x,
+              y: localPlayer.y,
+              angle: 0, // No importa para skyfall
+              mejoraId: cast.mejora.id,
+              velocidad: cast.mejora.velocidad,
+              owner: cast.player,
+              targetX: cast.position.x,
+              targetY: cast.position.y,
+              skillShot: true,
+              skyfall: true
+            });
           }
         }
       }
@@ -2912,6 +3397,74 @@ function drawMap() {
     ctx.strokeStyle = 'saddlebrown';
     ctx.lineWidth = 2;
     ctx.stroke();
+    ctx.restore();
+  }
+
+  // ❄️ Dibujar ventiscas activas
+  for (let i = activeVentiscas.length - 1; i >= 0; i--) {
+    const ventisca = activeVentiscas[i];
+    const elapsed = now - ventisca.createdAt;
+    if (elapsed >= ventisca.duration) {
+      activeVentiscas.splice(i, 1);
+      continue;
+    }
+    
+    const ventiscaX = ventisca.x - offsetX;
+    const ventiscaY = ventisca.y - offsetY;
+    const progress = elapsed / ventisca.duration;
+    const alpha = 1 - progress; // Fade out al final
+    const ventiscaAngle = ventisca.angle || 0; // Obtener el ángulo de rotación
+    
+    ctx.save();
+    ctx.translate(ventiscaX, ventiscaY);
+    ctx.rotate(ventiscaAngle); // Rotar el rectángulo
+    
+    // Área de ventisca (rectángulo azul translúcido)
+    ctx.fillStyle = `rgba(135, 206, 235, ${0.35 * alpha})`;
+    ctx.fillRect(-ventisca.width / 2, -ventisca.height / 2, ventisca.width, ventisca.height);
+    
+    // Borde del área
+    ctx.strokeStyle = `rgba(0, 191, 255, ${0.7 * alpha})`;
+    ctx.lineWidth = 3;
+    ctx.strokeRect(-ventisca.width / 2, -ventisca.height / 2, ventisca.width, ventisca.height);
+    
+    // Animación de estalactitas cayendo
+    const numStalactites = 20;
+    ctx.fillStyle = `rgba(255, 255, 255, ${0.8 * alpha})`;
+    ctx.strokeStyle = `rgba(173, 216, 230, ${0.6 * alpha})`;
+    ctx.lineWidth = 1;
+    
+    for (let j = 0; j < numStalactites; j++) {
+      // Posición pseudo-aleatoria basada en tiempo y índice
+      const seed = (j + elapsed * 0.003) % 1;
+      const x = (seed * 2 - 1) * ventisca.width * 0.45;
+      const y = ((elapsed * 0.15 + j * 50) % ventisca.height) - ventisca.height / 2;
+      
+      // Dibujar estalactita (triángulo pequeño)
+      const size = 4 + (seed * 3);
+      ctx.beginPath();
+      ctx.moveTo(x, y);
+      ctx.lineTo(x - size / 2, y - size * 2);
+      ctx.lineTo(x + size / 2, y - size * 2);
+      ctx.closePath();
+      ctx.fill();
+      ctx.stroke();
+    }
+    
+    // Partículas de nieve
+    const numSnowflakes = 30;
+    for (let j = 0; j < numSnowflakes; j++) {
+      const seed = (j + elapsed * 0.002) % 1;
+      const x = (Math.sin(seed * Math.PI * 2 + j) * 0.5) * ventisca.width * 0.45;
+      const y = ((elapsed * 0.1 + j * 30) % ventisca.height) - ventisca.height / 2;
+      const snowSize = 1 + seed * 2;
+      
+      ctx.fillStyle = `rgba(255, 255, 255, ${(0.7 + seed * 0.3) * alpha})`;
+      ctx.beginPath();
+      ctx.arc(x, y, snowSize, 0, 2 * Math.PI);
+      ctx.fill();
+    }
+    
     ctx.restore();
   }
 
@@ -3076,6 +3629,15 @@ function drawRock(x, y, r) {
 
 function handleKeyDown(e) {
   if (hudVisible) return; // No permitir lanzar habilidades si HUD está activo
+  
+  // 🧊 Bloquear TODAS las acciones si el jugador está congelado
+  const localPlayer = players.find(p => p.nick === user.nick);
+  if (localPlayer && localPlayer.frozen && localPlayer.frozenUntil > Date.now()) {
+    console.log('⛔ Acción bloqueada: jugador congelado');
+    e.preventDefault();
+    return;
+  }
+  
   const key = e.key.toLowerCase();
   
   // 🎮 MOVIMIENTO ESTILO BATTLERITE - solo enviar teclas al servidor
@@ -3189,15 +3751,10 @@ function handleKeyDown(e) {
             const dx = targetX - localPlayer.x;
             const dy = targetY - localPlayer.y;
             const angle = Math.atan2(dy, dx);
-            const dist = Math.sqrt(dx * dx + dy * dy);
             
-            let finalX = targetX;
-            let finalY = targetY;
-            
-            if (dist > mejoraE.maxRange) {
-              finalX = localPlayer.x + Math.cos(angle) * mejoraE.maxRange;
-              finalY = localPlayer.y + Math.sin(angle) * mejoraE.maxRange;
-            }
+            // 🪝 Gancho SIEMPRE se lanza a distancia máxima fija
+            const finalX = localPlayer.x + Math.cos(angle) * mejoraE.maxRange;
+            const finalY = localPlayer.y + Math.sin(angle) * mejoraE.maxRange;
             
             cancelInvisibilityOnShoot();
             
@@ -3577,43 +4134,136 @@ function handleKeyDown(e) {
       }
     }
     
-    // 🆕 Habilidad F - Láser continuo
+    // 🆕 Habilidad F - Láser continuo y Super Meteoro
     if (key === 'f') {
       if (!mejoraFSeleccionada) return;
       
-      const now = performance.now();
-      if (now - lastFFireTime < mejoraFSeleccionada.cooldown) return;
-      
-      lastFFireTime = now;
-      const localPlayer = players.find(p => p.nick === user.nick);
-      if (!localPlayer) return;
-      
-      // 🎥 Usar la posición de cámara interpolada
-      let offsetX = cameraX - canvas.width / 2;
-      let offsetY = cameraY - canvas.height / 2;
-      
-      const targetX = mouseX + offsetX;
-      const targetY = mouseY + offsetY;
-      const dx = targetX - localPlayer.x;
-      const dy = targetY - localPlayer.y;
-      const angle = Math.atan2(dy, dx);
-      
-      cancelInvisibilityOnShoot();
-      
-      // 🔊 Reproducir sonido de láser
-      if (typeof playAbilitySound === 'function') {
-        playAbilitySound('laser', 0.5);
+      // Super Meteoro con aiming y cast similar a Roca fangosa
+      if (mejoraFSeleccionada.nombre === 'Super Meteoro') {
+        if (!superMeteoroAiming) {
+          // Primera presión: entrar en modo aiming
+          superMeteoroAiming = true;
+          console.log('Super Meteoro: Modo aiming activado');
+          return; // No hacer nada más, solo activar el modo aiming
+        } else {
+          // Segunda presión: empezar cast
+          superMeteoroAiming = false;
+          const now = performance.now();
+          if (now - lastFFireTime < mejoraFSeleccionada.cooldown) return;
+          const localPlayer = players.find(p => p.nick === user.nick);
+          if (!localPlayer) return;
+          
+          // Usar cameraX y cameraY para calcular offset correctamente
+          let offsetX = cameraX - canvas.width / 2;
+          let offsetY = cameraY - canvas.height / 2;
+          
+          const targetX = mouseX + offsetX;
+          const targetY = mouseY + offsetY;
+          const dx = targetX - localPlayer.x;
+          const dy = targetY - localPlayer.y;
+          const dist = Math.sqrt(dx * dx + dy * dy);
+          
+          if (dist > mejoraFSeleccionada.aimRange) {
+            console.log('Super Meteoro: Fuera de rango');
+            return; // Fuera de rango
+          }
+          
+          lastFFireTime = now; // Iniciar cooldown al empezar cast
+          
+          console.log('Super Meteoro: Iniciando cast en', targetX, targetY);
+          
+          // Enviar evento al servidor para sincronizar
+          socket.emit('startCast', {
+            roomId,
+            position: { x: targetX, y: targetY },
+            startTime: now,
+            player: user.nick,
+            mejora: mejoraFSeleccionada
+          });
+        }
+      } else if (mejoraFSeleccionada.nombre === 'Ventisca') {
+        // Ventisca con aiming y cast similar a Super Meteoro
+        if (!ventiscaAiming) {
+          // Primera presión: entrar en modo aiming
+          ventiscaAiming = true;
+          console.log('Ventisca: Modo aiming activado');
+          return; // No hacer nada más, solo activar el modo aiming
+        } else {
+          // Segunda presión: empezar cast
+          ventiscaAiming = false;
+          const now = performance.now();
+          if (now - lastFFireTime < mejoraFSeleccionada.cooldown) return;
+          const localPlayer = players.find(p => p.nick === user.nick);
+          if (!localPlayer) return;
+          
+          // Usar cameraX y cameraY para calcular offset correctamente
+          let offsetX = cameraX - canvas.width / 2;
+          let offsetY = cameraY - canvas.height / 2;
+          
+          const targetX = mouseX + offsetX;
+          const targetY = mouseY + offsetY;
+          const dx = targetX - localPlayer.x;
+          const dy = targetY - localPlayer.y;
+          const dist = Math.sqrt(dx * dx + dy * dy);
+          
+          if (dist > mejoraFSeleccionada.aimRange) {
+            console.log('Ventisca: Fuera de rango');
+            return; // Fuera de rango
+          }
+          
+          lastFFireTime = now; // Iniciar cooldown al empezar cast
+          
+          console.log('Ventisca: Iniciando cast en', targetX, targetY);
+          
+          // Calcular y guardar el ángulo de rotación
+          const angle = Math.atan2(dy, dx);
+          mejoraFSeleccionada.lastCastAngle = angle; // Guardar para el renderizado del cast
+          
+          // Enviar evento al servidor para sincronizar
+          socket.emit('startCast', {
+            roomId,
+            position: { x: targetX, y: targetY },
+            startTime: now,
+            player: user.nick,
+            mejora: mejoraFSeleccionada
+          });
+        }
+      } else if (mejoraFSeleccionada.laserContinuo) {
+        // Láser continuo (código original)
+        const now = performance.now();
+        if (now - lastFFireTime < mejoraFSeleccionada.cooldown) return;
+        
+        lastFFireTime = now;
+        const localPlayer = players.find(p => p.nick === user.nick);
+        if (!localPlayer) return;
+        
+        // 🎥 Usar la posición de cámara interpolada
+        let offsetX = cameraX - canvas.width / 2;
+        let offsetY = cameraY - canvas.height / 2;
+        
+        const targetX = mouseX + offsetX;
+        const targetY = mouseY + offsetY;
+        const dx = targetX - localPlayer.x;
+        const dy = targetY - localPlayer.y;
+        const angle = Math.atan2(dy, dx);
+        
+        cancelInvisibilityOnShoot();
+        
+        // 🔊 Reproducir sonido de láser
+        if (typeof playAbilitySound === 'function') {
+          playAbilitySound('laser', 0.5);
+        }
+        
+        socket.emit('shootProjectile', {
+          roomId,
+          x: localPlayer.x,
+          y: localPlayer.y,
+          angle,
+          mejoraId: mejoraFSeleccionada.id,
+          velocidad: mejoraFSeleccionada.velocidad,
+          owner: localPlayer.nick
+        });
       }
-      
-      socket.emit('shootProjectile', {
-        roomId,
-        x: localPlayer.x,
-        y: localPlayer.y,
-        angle,
-        mejoraId: mejoraFSeleccionada.id,
-        velocidad: mejoraFSeleccionada.velocidad,
-        owner: localPlayer.nick
-      });
     }
     if (key === 'm') {
       // Cheat para pruebas: reducir 100 vida al rival
@@ -4543,50 +5193,63 @@ function getExpForLevel(level) {
 }
 
 async function cargarSala() {
+  console.log('🚀 [DEBUG] cargarSala() iniciada, roomId:', roomId);
   // Resetear estado de rondas al cargar sala (siempre empezar con Round 1)
   mostrarSoloProyectilQ = false;
   currentRound = 1;
   // No mostrar HUD de rondas aquí, solo cuando se inicie la partida
   try {
+  console.log('🔍 [DEBUG] Haciendo fetch a /rooms...');
   const res = await fetch(`${SERVER_URL}/rooms`);
     const data = await res.json();
+    console.log('📦 [DEBUG] Respuesta recibida:', data);
     if (data.success) {
       sala = data.salas.find(s => s.id === roomId);
+      console.log('🏠 [DEBUG] Sala encontrada:', sala);
       renderSala(sala);
       if (sala) {
         // Unirse a la sala de sockets con stats calculadas
         // Usar getUser de ShopSystem para obtener datos migrados
         const user = window.ShopSystem ? window.ShopSystem.getUser() : JSON.parse(localStorage.getItem('batlesd_user'));
+        console.log('👤 [DEBUG] Usuario:', user);
         
-        // Calcular stats del jugador usando el sistema de tienda
+        // Obtener color del jugador (items son solo cosméticos, sin stats)
         let playerColor = '#f4c2a0';
         let playerStats = { health: 200, damage: 0, speed: 3.5, maxHealth: 200 };
         
         if (window.ShopSystem && user?.equipped) {
           playerColor = window.ShopSystem.getEquippedColor(user.equipped);
-          playerStats = window.ShopSystem.calculatePlayerStats(user.equipped);
           
-          // Debug: mostrar stats calculadas
+          // Debug: mostrar color equipado
           console.log('🎨 Color equipado:', user.equipped.color);
           console.log('🎨 Color hex:', playerColor);
-          console.log('📊 Stats calculadas:', playerStats);
         }
         
+        console.log('🟡 [DEBUG FRONTEND] Emitiendo joinRoom:', {
+          roomId,
+          nick: user.nick,
+          color: playerColor
+        });
         socket.emit('joinRoom', { 
           roomId, 
           color: playerColor, 
           nick: user.nick,
-          stats: playerStats // Enviar stats completas al servidor
+          stats: playerStats // Enviar stats base (sin modificadores de items)
         });
       }
     }
   } catch (err) {
-    roomInfo.textContent = 'Error al conectar al servidor.';
-    playersList.innerHTML = '';
+    console.error('❌ [DEBUG] Error en cargarSala:', err);
+    const roomInfo = document.getElementById('roomInfo');
+    const playersGrid = document.getElementById('playersGrid');
+    if (roomInfo) roomInfo.textContent = 'Error al conectar al servidor.';
+    if (playersGrid) playersGrid.innerHTML = '';
   }
 }
 
+console.log('⚡ [DEBUG] Antes de llamar cargarSala(), roomId:', roomId, 'user:', user?.nick);
 cargarSala();
+console.log('✅ [DEBUG] Después de llamar cargarSala()');
 
 // Botón iniciar
 startBtn.addEventListener('click', () => {
@@ -4834,7 +5497,7 @@ function checkSpectatorMode() {
 // Llamar tras cada playersUpdate
 socket.on('playersUpdate', () => { checkSpectatorMode(); });
 
-// Evento cuando un jugador muere: crear tumba
+// Evento cuando un jugador muere: crear tumba y añadir al kill feed
 socket.on('playerDied', (data) => {
   // Agregar tumba en la posición donde murió el jugador
   tumbas.push({
@@ -4843,24 +5506,38 @@ socket.on('playerDied', (data) => {
     y: data.y
   });
   console.log(`[TUMBA] ${data.nick} murió en (${data.x}, ${data.y})`);
+  
+  // 🎯 Añadir al kill feed si hay killer
+  if (data.killer) {
+    addKillToFeed(data.killer, data.nick);
+  }
 });
 
-// Evento de fin de ronda: mostrar solo mejoras proyectilQ
-socket.on('roundEnded', (data) => {
+// Evento de fin de ronda: mostrar ganador y luego HUD de aumentos
+socket.on('roundEnded', async (data) => {
   mostrarHUDRondas();
   mostrarSoloProyectilQ = true;
   activeMuddyGrounds = []; // Clear muddy grounds
+  activeVentiscas = []; // ❄️ Clear ventiscas
   activeSacredGrounds = []; // Clear sacred grounds
+  tornados = []; // 🧹 Limpiar tornados al final de cada ronda
+  activeLasers = []; // 🧹 Limpiar láseres al final de cada ronda
   // Limpiar solo muros TEMPORALES (de habilidades), mantener bloques del mapa
   if (window.murosDePiedra) {
     window.murosDePiedra = window.murosDePiedra.filter(muro => muro.muroMapa === true);
   }
   tumbas = []; // Limpiar tumbas al final de cada ronda
+  killFeed.length = 0; // 🎯 Limpiar kill feed al final de cada ronda
   spectatorTarget = null; // Resetear espectador
   currentRound++;
   
   // 🆕 Limpiar availableUpgrades antes de incrementar ronda para evitar bugs
   availableUpgrades = null;
+  
+  // 🏆 Mostrar ganador de la ronda (espera 2 segundos)
+  if (data.winner) {
+    await mostrarGanadorRonda(data.winner);
+  }
   
   // 🔥 IMPORTANTE: Esperar a que el servidor envíe availableUpgrades para ronda 4
   // Para rondas 2, 3, 5, 6, 7: Mostrar HUD de aumentos (sin usar availableUpgrades)
@@ -4888,6 +5565,18 @@ socket.on('roundStarted', () => {
 
 // Evento de fin del juego: mostrar stats finales
 socket.on('gameEnded', (data) => {
+  // 🧹 Limpiar TODOS los elementos cuando termina el juego
+  tornados = [];
+  activeLasers = [];
+  activeMuddyGrounds = [];
+  activeVentiscas = []; // ❄️ Limpiar ventiscas
+  activeSacredGrounds = [];
+  tumbas = [];
+  explosions.length = 0;
+  if (window.murosDePiedra) {
+    window.murosDePiedra = window.murosDePiedra.filter(muro => muro.muroMapa === true);
+  }
+  
   mostrarStatsFinales(data.stats, data.winner);
 });
 
@@ -4972,6 +5661,20 @@ socket.on('startBattle', () => {
 
 socket.on('muddyGroundCreated', (data) => {
   activeMuddyGrounds.push({ ...data, createdAt: Date.now() });
+});
+
+socket.on('ventiscaCreated', (data) => {
+  console.log('❄️ Frontend recibió ventiscaCreated:', data);
+  activeVentiscas.push({ ...data, createdAt: Date.now() });
+});
+
+socket.on('playerFrozen', (data) => {
+  console.log('🧊 Jugador congelado:', data.nick);
+  const player = players.find(p => p.nick === data.nick);
+  if (player) {
+    player.frozen = true;
+    player.frozenUntil = Date.now() + data.duration;
+  }
 });
 
 socket.on('sacredGroundCreated', (data) => {
@@ -5498,6 +6201,9 @@ function mostrarHUDSeleccionHabilidades() {
   let qSeleccionado = false;
   let eSeleccionado = false;
   let espacioSeleccionado = false;
+  
+  // 🔒 Sistema de delay de 2 segundos para evitar clics accidentales
+  let selectionEnabled = false;
 
   teclas.forEach((tecla, idx) => {
     const section = document.createElement('div');
@@ -5580,6 +6286,8 @@ function mostrarHUDSeleccionHabilidades() {
       btn.style.textShadow = `0 2px 8px ${hab.color}88`;
       btn.style.whiteSpace = 'nowrap';
       btn.style.textOverflow = 'ellipsis';
+      btn.style.opacity = '0.5'; // 🔒 Iniciar semi-transparente
+      btn.style.pointerEvents = 'none'; // 🔒 Deshabilitar clics inicialmente
 
       // Efecto de brillo en hover
       const shine = document.createElement('span');
@@ -5633,6 +6341,9 @@ function mostrarHUDSeleccionHabilidades() {
       };
       
       btn.onclick = () => {
+        // 🔒 Verificar que la selección esté habilitada
+        if (!selectionEnabled) return;
+        
         // Oculta todos los botones menos el seleccionado
         Array.from(grid.children).forEach(child => {
           const childBtn = child.querySelector('button');
@@ -5730,6 +6441,31 @@ function mostrarHUDSeleccionHabilidades() {
   timerDiv.style.backgroundClip = 'text';
   timerDiv.textContent = '⏱️ Tiempo restante: 20s';
   timerContainer.appendChild(timerDiv);
+  
+  // 🔒 Mensaje de delay inicial
+  const delayMessage = document.createElement('div');
+  delayMessage.style.fontSize = '1.2rem';
+  delayMessage.style.fontWeight = '700';
+  delayMessage.style.color = '#ffeb3b';
+  delayMessage.style.marginTop = '10px';
+  delayMessage.style.textShadow = '0 2px 10px rgba(255, 235, 59, 0.6)';
+  delayMessage.textContent = '🔒 Espera 2 segundos para seleccionar...';
+  timerContainer.appendChild(delayMessage);
+  
+  // Habilitar selección después del delay
+  setTimeout(() => {
+    selectionEnabled = true;
+    delayMessage.style.transition = 'opacity 0.3s';
+    delayMessage.style.opacity = '0';
+    setTimeout(() => delayMessage.remove(), 300);
+    
+    // Habilitar visualmente todos los botones
+    document.querySelectorAll('#habilidadesHUD button').forEach(btn => {
+      btn.style.opacity = '1';
+      btn.style.pointerEvents = 'auto';
+    });
+  }, 2000);
+  
   hud.appendChild(timerContainer);
 
   let timeLeft = 20;

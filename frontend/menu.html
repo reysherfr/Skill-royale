@@ -6,6 +6,12 @@
   <title>Skill Clash - Menú Principal</title>
   <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="styles.css">
+  <script>
+    // Deshabilitar menú contextual del click derecho
+    document.addEventListener('contextmenu', function(e) {
+      e.preventDefault();
+    });
+  </script>
 </head>
 <body>
   <!-- 🎵 Música de fondo del menú -->
@@ -196,8 +202,8 @@
         <div class="btn-arrow">→</div>
       </button>
 
-      <!-- 🔧 BOTÓN DEV MODE - SOLO PARA DESARROLLO (OCULTO) -->
-      <button id="devEditorBtn" class="action-btn dev-editor-btn" style="display: none;">
+      <!-- 🔧 BOTÓN DEV MODE - EDITOR DE MAPAS -->
+      <button id="devEditorBtn" class="action-btn dev-editor-btn">
         <div class="btn-icon">
           <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
             <polygon points="12 2 2 7 12 12 22 7 12 2"></polygon>
@@ -325,7 +331,6 @@
                 </div>
                 <div class="item-info">
                   <h4>Color Azul</h4>
-                  <p class="item-stats">❤️ +5 Vida</p>
                   <p class="item-price">💰 100 Oro</p>
                 </div>
                 <button class="item-buy-btn">Comprar</button>
@@ -337,7 +342,6 @@
                 </div>
                 <div class="item-info">
                   <h4>Color Rojo</h4>
-                  <p class="item-stats">⚔️ +1 Daño</p>
                   <p class="item-price">💰 100 Oro</p>
                 </div>
                 <button class="item-buy-btn">Comprar</button>
@@ -349,7 +353,6 @@
                 </div>
                 <div class="item-info">
                   <h4>Color Verde</h4>
-                  <p class="item-stats">🏃 +0.3 Velocidad</p>
                   <p class="item-price">💰 100 Oro</p>
                 </div>
                 <button class="item-buy-btn">Comprar</button>
