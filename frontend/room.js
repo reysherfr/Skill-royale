@@ -335,7 +335,7 @@ function mostrarHUDAumentosRonda2() {
   timerDiv.style.WebkitBackgroundClip = 'text';
   timerDiv.style.WebkitTextFillColor = 'transparent';
   timerDiv.style.backgroundClip = 'text';
-  timerDiv.textContent = '⏱️ Tiempo restante: 5s';
+  timerDiv.textContent = '⏱️ Tiempo restante: 15s';
   timerContainer.appendChild(timerDiv);
   
   // 🔒 Mensaje de delay inicial
@@ -357,7 +357,7 @@ function mostrarHUDAumentosRonda2() {
   
   hud.appendChild(timerContainer);
 
-  let timeLeft = 5;
+  let timeLeft = 15;
   const timerInterval = setInterval(() => {
     timeLeft--;
     timerDiv.textContent = `⏱️ Tiempo restante: ${timeLeft}s`;
@@ -510,7 +510,7 @@ function mostrarHUDHabilidadesF() {
   timerDiv.style.color = '#fff';
   timerDiv.style.textShadow = '0 0 20px rgba(255, 0, 255, 1), 0 0 40px rgba(255, 0, 255, 0.8)';
   timerDiv.style.letterSpacing = '2px';
-  timerDiv.textContent = '⏱️ Tiempo restante: 10s';
+  timerDiv.textContent = '⏱️ Tiempo restante: 15s';
   timerContainer.appendChild(timerDiv);
   
   // 🔒 Mensaje de delay inicial
@@ -724,7 +724,7 @@ function mostrarHUDHabilidadesF() {
 
   hud.appendChild(grid);
 
-  let timeLeft = 10;
+  let timeLeft = 15;
   const timerInterval = setInterval(() => {
     timeLeft--;
     timerDiv.textContent = `⏱️ Tiempo restante: ${timeLeft}s`;
@@ -6439,7 +6439,7 @@ function mostrarHUDSeleccionHabilidades() {
   timerDiv.style.WebkitBackgroundClip = 'text';
   timerDiv.style.WebkitTextFillColor = 'transparent';
   timerDiv.style.backgroundClip = 'text';
-  timerDiv.textContent = '⏱️ Tiempo restante: 20s';
+  timerDiv.textContent = '⏱️ Tiempo restante: 15s';
   timerContainer.appendChild(timerDiv);
   
   // 🔒 Mensaje de delay inicial
@@ -6468,7 +6468,7 @@ function mostrarHUDSeleccionHabilidades() {
   
   hud.appendChild(timerContainer);
 
-  let timeLeft = 20;
+  let timeLeft = 15;
   const timerInterval = setInterval(() => {
     timeLeft--;
     timerDiv.textContent = `⏱️ Tiempo restante: ${timeLeft}s`;
