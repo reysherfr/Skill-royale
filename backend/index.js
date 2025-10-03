@@ -8,7 +8,6 @@ import path from 'path';
 import { fileURLToPath } from 'url';
 import { Player } from '../frontend/players.js';
 import { MEJORAS } from './mejoras.shared.js';
-import { generarBloquesPorRonda } from './procedural.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
@@ -93,6 +92,9 @@ const playersOnline = new Map(); // { nick: { nivel, lastSeen, socketId } }
 const matchmakingQueue = []; // Array de { nick, nivel, socketId, joinedAt }
 const pendingMatches = new Map(); // Map de matchId -> { player1, player2, confirmations, createdAt }
 let matchIdCounter = 0;
+
+// 🛡️ Rate limiter para disparos por jugador (anti-spam)
+const shootRateLimiter = new Map(); // { socketId: lastShootTime }
 
 io.on('connection', (socket) => {
   console.log('Cliente conectado:', socket.id);
@@ -276,13 +278,13 @@ io.on('connection', (socket) => {
     
     if (sala && sala.is1v1 && sala.round === 0) {
       // Contar cuántos sockets están en la sala
-      io.in(roomId).fetchSockets().then(sockets => {
+      io.in(roomId).fetchSockets().then(async (sockets) => {
         // Si ambos jugadores están conectados (2 sockets en la sala)
         if (sockets.length === 2) {
           console.log(`Ambos jugadores conectados a sala 1v1 ${roomId}, iniciando batalla...`);
           // Iniciar casi inmediatamente (100ms para asegurar sincronización)
-          setTimeout(() => {
-            iniciarBatalla1v1(roomId);
+          setTimeout(async () => {
+            await iniciarBatalla1v1(roomId);
           }, 100);
         }
       });
@@ -316,7 +318,7 @@ io.on('connection', (socket) => {
     }
   });
 
-  socket.on('startGame', (data) => {
+  socket.on('startGame', async (data) => {
     const { roomId, nick } = data;
     const sala = salas.find(s => s.id === roomId && s.active);
     if (!sala) return;
@@ -324,28 +326,39 @@ io.on('connection', (socket) => {
     if (sala.players.length < 2) return; // Necesita al menos 2 jugadores
     
     // 🎮 Crear escenario de batalla profesional
-    crearEscenarioBatalla(roomId);
+    await crearEscenarioBatalla(roomId);
     
     // Inicializar ronda por sala si no existe
     sala.round = 1;
-    // Distribuir hasta 4 jugadores en las esquinas
-    const offset = 200;
+    
+    // 🎯 Usar spawns del mapa personalizado si están disponibles
+    const mapSpawns = global.mapSpawns && global.mapSpawns[roomId];
+    
+    // Distribuir hasta 4 jugadores usando spawns del mapa o posiciones por defecto
     sala.players.forEach((player, i) => {
-      if (i === 0) { // esquina arriba-izquierda
-        player.x = offset;
-        player.y = offset;
-      } else if (i === 1) { // esquina arriba-derecha
-        player.x = 2500 - offset;
-        player.y = offset;
-      } else if (i === 2) { // esquina abajo-izquierda
-        player.x = offset;
-        player.y = 1500 - offset;
-      } else if (i === 3) { // esquina abajo-derecha
-        player.x = 2500 - offset;
-        player.y = 1500 - offset;
+      if (mapSpawns && mapSpawns[i]) {
+        // Usar spawn del mapa
+        player.x = mapSpawns[i].x;
+        player.y = mapSpawns[i].y;
       } else {
-        player.x = 1250;
-        player.y = 750;
+        // Usar posiciones por defecto en esquinas
+        const offset = 200;
+        if (i === 0) { // esquina arriba-izquierda
+          player.x = offset;
+          player.y = offset;
+        } else if (i === 1) { // esquina arriba-derecha
+          player.x = 2500 - offset;
+          player.y = offset;
+        } else if (i === 2) { // esquina abajo-izquierda
+          player.x = offset;
+          player.y = 1500 - offset;
+        } else if (i === 3) { // esquina abajo-derecha
+          player.x = 2500 - offset;
+          player.y = 1500 - offset;
+        } else {
+          player.x = 1250;
+          player.y = 750;
+        }
       }
       
       // Usar stats personalizadas si existen, sino usar valores por defecto
@@ -412,51 +425,387 @@ io.on('connection', (socket) => {
     }
   });
 
-  socket.on('movePlayer', (data) => {
-    const { roomId, nick, x, y } = data;
-    const sala = salas.find(s => s.id === roomId && s.active);
-    if (!sala) return;
-    const player = sala.players.find(p => p.nick === nick);
-    if (!player) return;
-    // Verificar colisión con muros de piedra (óvalo)
-    let puedeMover = true;
-    if (murosPorSala[roomId]) {
-      for (const muro of murosPorSala[roomId]) {
-        // Solo muros con colision:true
-        const mejora = MEJORAS.find(m => m.id === 'muro_piedra');
-        if (mejora && mejora.colision) {
-          // Transformar la posición del jugador al sistema local del muro
-          const cos = Math.cos(-muro.angle);
-          const sin = Math.sin(-muro.angle);
-          const relX = x - muro.x;
-          const relY = y - muro.y;
-          const localX = relX * cos - relY * sin;
-          const localY = relX * sin + relY * cos;
-          const rx = muro.width + 32; // 32 = radio del jugador
-          const ry = muro.height + 32;
-          if ((localX * localX) / (rx * rx) + (localY * localY) / (ry * ry) <= 1) {
-            puedeMover = false;
-            break;
-          }
-        }
-      }
-    }
-    if (puedeMover) {
-      player.x = x;
-      player.y = y;
-      socket.to(roomId).emit('playerMoved', { nick, x, y });
-    }
-  });
+  // Evento movePlayer eliminado - ahora se usa movimiento en tiempo real con keyStates
 
   // Recibir disparo de proyectil
   socket.on('shootProjectile', (data) => {
-    // Guardar proyectil en la sala
-    if (!proyectilesPorSala[data.roomId]) proyectilesPorSala[data.roomId] = [];
-    // Buscar la mejora
+    // 🛡️ PROTECCIÓN ANTI-SPAM: Verificar rate limit
+    const now = Date.now();
     const mejora = MEJORAS.find(m => m.id === data.mejoraId);
     if (!mejora) return; // Si no existe, ignorar
+    
+    // Crear una clave única por socket + habilidad para evitar bloquear todas las habilidades
+    const rateLimitKey = `${socket.id}_${data.mejoraId}`;
+    const lastShoot = shootRateLimiter.get(rateLimitKey) || 0;
+    
+    // Para habilidades con preview y cooldown largo (>5s), usar tolerancia más baja (50%)
+    // Para habilidades rápidas (<5s), mantener 95% del cooldown para prevenir spam real
+    let tolerancia;
+    if (mejora.cooldown >= 5000) {
+      // Habilidades con cooldown largo (gancho, muro, meteoro): 50% del cooldown
+      tolerancia = 0.50;
+    } else if (mejora.id === 'gancho' || mejora.id === 'muro_de_piedra') {
+      // Fallback para preview skills: 70%
+      tolerancia = 0.70;
+    } else {
+      // Habilidades rápidas (proyectiles normales): 95%
+      tolerancia = 0.95;
+    }
+    
+    const minInterval = (mejora.cooldown || 500) * tolerancia;
+    
+    if (now - lastShoot < minInterval) {
+      console.log(`⚠️ Spam detectado de ${data.owner} para ${mejora.nombre}: ${now - lastShoot}ms < ${minInterval}ms (cooldown: ${mejora.cooldown}ms)`);
+      // Notificar al cliente que el disparo fue rechazado para resetear cooldown
+      socket.emit('projectileRejected', { mejoraId: data.mejoraId });
+      return; // Ignorar disparo spam
+    }
+    shootRateLimiter.set(rateLimitKey, now);
+    
+    // 🎯 OBTENER POSICIÓN DEL SERVIDOR: Usar la posición actual del jugador en el servidor
+    const salaShoot = salas.find(s => s.id === data.roomId && s.active);
+    if (!salaShoot) return;
+    
+    const jugadorServidor = salaShoot.players.find(p => p.nick === data.owner);
+    if (!jugadorServidor) return;
+    
+    // Sobrescribir la posición del cliente con la posición del servidor
+    data.x = jugadorServidor.x;
+    data.y = jugadorServidor.y;
+    
+    // Guardar proyectil en la sala
+    if (!proyectilesPorSala[data.roomId]) proyectilesPorSala[data.roomId] = [];
+    
+    // 🆕 LÁSER CONTINUO (rayo_laser y laser)
+    if (mejora.laserContinuo && (mejora.id === 'rayo_laser' || mejora.id === 'laser')) {
+      if (!laseresContinuosPorSala[data.roomId]) laseresContinuosPorSala[data.roomId] = [];
+      
+      const salaLaser = salas.find(s => s.id === data.roomId && s.active);
+      if (!salaLaser) return;
+      
+      const lanzador = salaLaser.players.find(p => p.nick === data.owner);
+      if (!lanzador) return;
+      
+      const laser = {
+        id: ++projectileIdCounter,
+        x: data.x,
+        y: data.y,
+        angle: data.angle,
+        maxRange: mejora.maxRange || 400,
+        owner: data.owner,
+        createdAt: Date.now(),
+        duracion: mejora.duracion || 3000,
+        damageInterval: mejora.damageInterval || 1000,
+        damage: mejora.danio || 7,
+        lastDamageTime: 0,
+        color: mejora.color,
+        radius: mejora.radius || 8,
+        mejoraId: mejora.id,
+        // Propiedades específicas del nuevo láser
+        healPerSecond: mejora.healPerSecond || 0,
+        wallDamageReduction: mejora.wallDamageReduction || 0,
+        canPenetrateWalls: mejora.canPenetrateWalls || false
+      };
+      
+      // 🆕 Aplicar relentización del 90% al lanzador si es el nuevo láser
+      if (mejora.id === 'laser') {
+        lanzador.laserSlowActive = true;
+      }
+      
+      laseresContinuosPorSala[data.roomId].push(laser);
+      
+      // Emitir a todos los clientes
+      io.to(data.roomId).emit('laserCreated', laser);
+      return; // No crear proyectil normal
+    }
+    
+    // 🆕 TORNADO - Habilidad Q con atracción y daño continuo
+    if (mejora.id === 'tornado') {
+      if (!tornadosPorSala[data.roomId]) tornadosPorSala[data.roomId] = [];
+      
+      const salaActual = salas.find(s => s.id === data.roomId && s.active);
+      if (!salaActual) return;
+      
+      const lanzador = salaActual.players.find(p => p.nick === data.owner);
+      if (!lanzador) return;
+      
+      // 🎯 APLICAR AUMENTOS AL TORNADO
+      // Agrandar aumenta el radio del tornado (+15 por stack)
+      const agrandadorStacks = lanzador.mejoras ? lanzador.mejoras.filter(m => m.id === 'agrandar').length : 0;
+      let maxRadius = (mejora.effect?.radius || 100) + (agrandadorStacks * 15);
+      
+      // Explosión de sabor: crear explosiones periódicas en el tornado
+      const explosionSabor = lanzador.mejoras ? lanzador.mejoras.find(m => m.id === 'explosion_sabor') : null;
+      const explosionSaborMejora = explosionSabor ? MEJORAS.find(m => m.id === 'explosion_sabor') : null;
+      
+      // Reducción de daño por explosión de sabor (-30%)
+      let damagePerTick = mejora.effect?.damagePerTick || 15;
+      if (explosionSabor) {
+        const damageReduction = explosionSaborMejora?.efecto?.damageReduction || 0.3;
+        damagePerTick = Math.floor(damagePerTick * (1 - damageReduction));
+      }
+      
+      const duration = mejora.effect?.duration || 5000;
+      
+      // 🎯 Ajustar posición si colisiona con muros
+      const targetX = data.targetX || data.x;
+      const targetY = data.targetY || data.y;
+      const adjustedPosition = adjustPositionIfColliding(targetX, targetY, salaActual, maxRadius);
+      
+      if (adjustedPosition.adjusted) {
+        console.log(`🌪️ Tornado ajustado de (${targetX}, ${targetY}) a (${adjustedPosition.x}, ${adjustedPosition.y})`);
+      }
+      
+      const tornado = {
+        id: ++projectileIdCounter,
+        x: adjustedPosition.x,
+        y: adjustedPosition.y,
+        radius: 0, // Empieza en 0 y crece
+        maxRadius: maxRadius, // Radio máximo (afectado por agrandar)
+        growthRate: maxRadius / 500, // Crece hasta tamaño completo en 0.5 segundos
+        owner: data.owner,
+        createdAt: Date.now(),
+        duration: duration, // Duración (afectada por potenciador)
+        damagePerTick: damagePerTick, // Daño por tick (afectado por explosión sabor)
+        tickRate: mejora.effect?.tickRate || 1000, // Cada 1 segundo
+        pullForce: mejora.effect?.pullForce || 8, // Fuerza de atracción
+        slowAmount: mejora.effect?.slowAmount || 0.3, // 30% slow
+        lastDamageTick: Date.now(),
+        color: mejora.color,
+        mejoraId: mejora.id,
+        // Explosión de sabor
+        hasExplosionSabor: !!explosionSabor,
+        explosionRadius: explosionSaborMejora?.efecto?.explosionRadius || 60,
+        lastExplosionTime: Date.now(),
+        explosionInterval: 1500, // Explosión cada 1.5 segundos si tiene sabor
+        // Movimiento aleatorio del tornado
+        moveAngle: Math.random() * Math.PI * 2,
+        moveSpeed: 2,
+        moveChangeTime: Date.now() + 1000 // Cambiar dirección cada 1 segundo
+      };
+      
+      tornadosPorSala[data.roomId].push(tornado);
+      
+      // Emitir a todos los clientes
+      io.to(data.roomId).emit('tornadoCreated', tornado);
+      return; // No crear proyectil normal
+    }
+    
+    // 🆕 GOLPE MELEE - Ataque cuerpo a cuerpo con sistema de combo
+    if (mejora.id === 'golpe') {
+      const salaActual = salas.find(s => s.id === data.roomId && s.active);
+      if (!salaActual) return;
+      
+      const atacante = salaActual.players.find(p => p.nick === data.owner);
+      if (!atacante) return;
+      
+      // 🎯 APLICAR AUMENTOS
+      // Potenciador aumenta maxRange (+150 por stack)
+      const potenciadorStacks = atacante.mejoras ? atacante.mejoras.filter(m => m.id === 'potenciador_proyectil').length : 0;
+      let meleeRange = (mejora.maxRange || 80) + (potenciadorStacks * 150);
+      
+      // Agrandar aumenta el radio visual del golpe (+10 por stack)
+      const agrandadorStacks = atacante.mejoras ? atacante.mejoras.filter(m => m.id === 'agrandar').length : 0;
+      const meleeRadius = (mejora.radius || 20) + (agrandadorStacks * 10);
+      
+      // Dividor: crear múltiples golpes en ángulos diferentes
+      const dividorStacks = atacante.mejoras ? atacante.mejoras.filter(m => m.id === 'dividor').length : 0;
+      const totalSwings = 1 + dividorStacks;
+      const angleSpread = dividorStacks > 0 ? Math.PI / 6 : 0; // 30 grados de separación
+      
+      // Explosión de sabor: crear explosiones en cada golpe
+      const explosionSabor = atacante.mejoras ? atacante.mejoras.find(m => m.id === 'explosion_sabor') : null;
+      const explosionSaborMejora = explosionSabor ? MEJORAS.find(m => m.id === 'explosion_sabor') : null;
+      const explosionSaborRadius = explosionSaborMejora?.efecto?.explosionRadius || 60;
+      
+      // Reducción de daño por dividor (-3 por stack)
+      let baseDamage = mejora.danio;
+      if (dividorStacks > 0) {
+        const mejoraDividor = MEJORAS.find(m => m.id === 'dividor');
+        const damageReductionFlat = mejoraDividor?.efecto?.damageReductionFlat || 3;
+        baseDamage = Math.max(1, baseDamage - (dividorStacks * damageReductionFlat));
+      }
+      
+      // Reducción de daño por explosión de sabor (-30%)
+      if (explosionSabor) {
+        const damageReduction = explosionSaborMejora?.efecto?.damageReduction || 0.3;
+        baseDamage = Math.floor(baseDamage * (1 - damageReduction));
+      }
+      
+      // Inicializar contador de combo si no existe
+      if (!atacante.golpeCombo) atacante.golpeCombo = 0;
+      
+      // Incrementar contador
+      atacante.golpeCombo++;
+      
+      // Verificar si es el tercer golpe (combo completo)
+      const isComboHit = atacante.golpeCombo >= (mejora.effect?.comboHits || 3);
+      const damageMultiplier = isComboHit ? (mejora.effect?.comboMultiplier || 2.5) : 1;
+      const finalDamage = Math.floor(baseDamage * damageMultiplier);
+      
+      // Resetear combo si llegó al tercer golpe
+      if (isComboHit) {
+        atacante.golpeCombo = 0;
+      }
+      
+      // Crear múltiples golpes si tiene dividor
+      for (let i = 0; i < totalSwings; i++) {
+        const swingAngle = data.angle + (i - Math.floor(totalSwings / 2)) * angleSpread;
+        
+        // Emitir animación de golpe para que todos la vean
+        io.to(data.roomId).emit('meleeSwing', {
+          x: atacante.x,
+          y: atacante.y,
+          angle: swingAngle,
+          range: meleeRange,
+          radius: meleeRadius,
+          color: mejora.color,
+          owner: data.owner
+        });
+        
+        // Buscar enemigos en rango melee para este golpe
+        for (const jugador of salaActual.players) {
+          if (jugador.defeated || jugador.nick === data.owner) continue;
+          
+          // Calcular si está en el cono del golpe
+          const dx = jugador.x - atacante.x;
+          const dy = jugador.y - atacante.y;
+          const dist = Math.sqrt(dx * dx + dy * dy);
+          const angleToTarget = Math.atan2(dy, dx);
+          const angleDiff = Math.abs(((angleToTarget - swingAngle + Math.PI) % (Math.PI * 2)) - Math.PI);
+          
+          // Si está dentro del rango y del cono (60 grados)
+          if (dist <= meleeRange + 32 && angleDiff <= Math.PI / 3) {
+            jugador.lastAttacker = data.owner;
+            applyDamage(jugador, finalDamage, io, data.roomId, 'golpe');
+            
+            // Emitir efecto visual del golpe
+            io.to(data.roomId).emit('meleeHit', {
+              x: jugador.x,
+              y: jugador.y,
+              color: mejora.color,
+              isCombo: isComboHit,
+              damage: finalDamage,
+              comboCount: isComboHit ? mejora.effect?.comboHits : atacante.golpeCombo,
+              targetNick: jugador.nick
+            });
+            
+            // 💥 Explosión de sabor: crear explosión en el punto de impacto
+            if (explosionSabor) {
+              io.to(data.roomId).emit('explosion', {
+                x: jugador.x,
+                y: jugador.y,
+                color: '#FFA500', // Naranja para explosión de sabor
+                radius: explosionSaborRadius,
+                duration: 400
+              });
+              
+              // Daño en área de la explosión
+              for (const otroJugador of salaActual.players) {
+                if (otroJugador.defeated || otroJugador.nick === data.owner) continue;
+                const dx2 = otroJugador.x - jugador.x;
+                const dy2 = otroJugador.y - jugador.y;
+                const dist2 = Math.sqrt(dx2 * dx2 + dy2 * dy2);
+                
+                if (dist2 <= explosionSaborRadius && otroJugador.nick !== jugador.nick) {
+                  otroJugador.lastAttacker = data.owner;
+                  const explosionDamage = Math.floor(finalDamage * 0.5); // 50% del daño original
+                  applyDamage(otroJugador, explosionDamage, io, data.roomId, 'explosion_sabor');
+                }
+              }
+            }
+            
+            break; // Solo golpear al primer enemigo en este swing
+          }
+        }
+        
+        // 🔄 REBOTE: Crear golpe desde el muro si fue golpeado
+        const reboteStacks = atacante.mejoras ? atacante.mejoras.filter(m => m.id === 'rebote').length : 0;
+        if (reboteStacks > 0 && murosPorSala[data.roomId]) {
+          const muros = murosPorSala[data.roomId];
+          
+          // Buscar muros golpeados
+          for (const muro of muros) {
+            if (!muro.colision) continue;
+            
+            // Transformar la posición del ataque al sistema local del muro
+            const cos = Math.cos(-muro.angle);
+            const sin = Math.sin(-muro.angle);
+            
+            for (let checkDist = 0; checkDist <= meleeRange; checkDist += 10) {
+              const checkX = data.x + Math.cos(data.angle) * checkDist;
+              const checkY = data.y + Math.sin(data.angle) * checkDist;
+              
+              const relX = checkX - muro.x;
+              const relY = checkY - muro.y;
+              const localX = relX * cos - relY * sin;
+              const localY = relX * sin + relY * cos;
+              
+              const rx = muro.width;
+              const ry = muro.height;
+              
+              // Verificar si el golpe toca el muro
+              if ((localX * localX) / (rx * rx) + (localY * localY) / (ry * ry) <= 1) {
+                // Crear golpe rebotado desde el muro en dirección opuesta
+                for (let b = 0; b < reboteStacks; b++) {
+                  setTimeout(() => {
+                    const bounceAngle = data.angle + Math.PI; // Dirección opuesta
+                    
+                    // Animación del golpe rebotado desde el muro
+                    io.to(data.roomId).emit('meleeSwing', {
+                      x: checkX, // Desde el punto de impacto
+                      y: checkY,
+                      angle: bounceAngle,
+                      range: meleeRange * 0.7,
+                      radius: meleeRadius,
+                      color: '#87CEEB',
+                      owner: data.owner,
+                      isBounce: true
+                    });
+                    
+                    // Buscar enemigos para el golpe rebotado
+                    for (const enemigo of salaActual.players) {
+                      if (enemigo.defeated || enemigo.nick === data.owner) continue;
+                      
+                      const dx3 = enemigo.x - checkX;
+                      const dy3 = enemigo.y - checkY;
+                      const dist3 = Math.sqrt(dx3 * dx3 + dy3 * dy3);
+                      const angleToTarget2 = Math.atan2(dy3, dx3);
+                      const angleDiff2 = Math.abs(((angleToTarget2 - bounceAngle + Math.PI) % (Math.PI * 2)) - Math.PI);
+                      
+                      if (dist3 <= meleeRange * 0.7 + 32 && angleDiff2 <= Math.PI / 3) {
+                        enemigo.lastAttacker = data.owner;
+                        const bounceDamage = Math.floor(finalDamage * 0.7);
+                        applyDamage(enemigo, bounceDamage, io, data.roomId, 'golpe_rebote');
+                        
+                        io.to(data.roomId).emit('meleeHit', {
+                          x: enemigo.x,
+                          y: enemigo.y,
+                          color: '#87CEEB',
+                          isCombo: false,
+                          damage: bounceDamage,
+                          comboCount: 0,
+                          targetNick: enemigo.nick
+                        });
+                        
+                        break;
+                      }
+                    }
+                  }, 150 + (b * 100));
+                }
+                
+                break; // Ya encontramos el muro golpeado
+              }
+            }
+          }
+        }
+      }
+      
+      return; // No crear proyectil normal
+    }
+    
     // Calcular radio modificado por 'agrandar' si el jugador tiene ese aumento
-    let modifiedRadius = mejora.radius;
+    let modifiedRadius = mejora.radius || 20;
     let salaActual = salas.find(s => s.id === data.roomId && s.active);
     let player = null;
     if (salaActual) {
@@ -472,62 +821,164 @@ io.on('connection', (socket) => {
       const dx = data.targetX - data.x;
       const dy = data.targetY - data.y;
       const angle = Math.atan2(dy, dx) + Math.PI / 2;
+      
+      // 🎯 Ajustar posición si colisiona con muros del mapa
+      const adjustedPosition = adjustPositionIfColliding(data.targetX, data.targetY, salaActual, Math.max(mejora.width, mejora.height));
+      
+      if (adjustedPosition.adjusted) {
+        console.log(`🪨 Muro de roca ajustado de (${data.targetX}, ${data.targetY}) a (${adjustedPosition.x}, ${adjustedPosition.y})`);
+      }
+      
+      // 🛡️ Pre-mover jugadores a áreas seguras ANTES de crear el muro
+      let finalX = adjustedPosition.x;
+      let finalY = adjustedPosition.y;
+      
+      if (salaActual) {
+        // Verificar cada jugador que podría ser afectado por el muro
+        for (const testPlayer of salaActual.players) {
+          const cos = Math.cos(-angle);
+          const sin = Math.sin(-angle);
+          const relX = testPlayer.x - finalX;
+          const relY = testPlayer.y - finalY;
+          const localX = relX * cos - relY * sin;
+          const localY = relX * sin + relY * cos;
+          const rx = mejora.width + 12;
+          const ry = mejora.height + 12;
+          
+          // Si el jugador estaría dentro del muro que vamos a crear
+          if ((localX * localX) / (rx * rx) + (localY * localY) / (ry * ry) <= 1) {
+            console.log(`🔄 Pre-moviendo a ${testPlayer.nick} a área segura antes de crear muro...`);
+            
+            // Calcular dirección de empuje normal
+            let normX = localX / rx;
+            let normY = localY / ry;
+            const normLen = Math.sqrt(normX * normX + normY * normY) || 1;
+            normX /= normLen;
+            normY /= normLen;
+            
+            // 🔄 Probar múltiples direcciones para encontrar área segura
+            const pushDist = 80; // Distancia de empuje aumentada
+            const directions = [
+              { x: normX, y: normY, name: 'normal' },
+              { x: -normX, y: -normY, name: 'opuesta' },
+              { x: normY, y: -normX, name: '90° derecha' },
+              { x: -normY, y: normX, name: '90° izquierda' },
+              { x: normX * 0.7 + normY * 0.7, y: normY * 0.7 - normX * 0.7, name: '45° diagonal 1' },
+              { x: normX * 0.7 - normY * 0.7, y: normY * 0.7 + normX * 0.7, name: '45° diagonal 2' },
+              { x: -normX * 0.7 + normY * 0.7, y: -normY * 0.7 - normX * 0.7, name: '-45° diagonal 1' },
+              { x: -normX * 0.7 - normY * 0.7, y: -normY * 0.7 + normX * 0.7, name: '-45° diagonal 2' }
+            ];
+            
+            let moved = false;
+            
+            for (const dir of directions) {
+              const newLocalX = localX + dir.x * pushDist;
+              const newLocalY = localY + dir.y * pushDist;
+              const globalX = finalX + newLocalX * cos + newLocalY * sin;
+              const globalY = finalY - newLocalX * sin + newLocalY * cos;
+              
+              // Verificar límites del mapa
+              if (globalX < 0 || globalX > 2500 || globalY < 0 || globalY > 1500) continue;
+              
+              // Verificar si esta posición es segura (no colisiona con muros existentes)
+              const tempSala = { id: data.roomId };
+              const collision = checkCollision(globalX, globalY, tempSala);
+              
+              if (!collision) {
+                testPlayer.x = globalX;
+                testPlayer.y = globalY;
+                moved = true;
+                console.log(`✅ ${testPlayer.nick} pre-movido a área segura (${dir.name}): (${globalX.toFixed(0)}, ${globalY.toFixed(0)})`);
+                io.to(data.roomId).emit('playerMoved', { nick: testPlayer.nick, x: testPlayer.x, y: testPlayer.y });
+                break;
+              }
+            }
+            
+            if (!moved) {
+              // Si ninguna dirección cercana funciona, mover más lejos
+              console.warn(`⚠️ Buscando posición más lejana para ${testPlayer.nick}...`);
+              for (let dist = 120; dist <= 200; dist += 40) {
+                for (const dir of directions) {
+                  const newLocalX = localX + dir.x * dist;
+                  const newLocalY = localY + dir.y * dist;
+                  const globalX = finalX + newLocalX * cos + newLocalY * sin;
+                  const globalY = finalY - newLocalX * sin + newLocalY * cos;
+                  
+                  if (globalX < 0 || globalX > 2500 || globalY < 0 || globalY > 1500) continue;
+                  
+                  const tempSala = { id: data.roomId };
+                  if (!checkCollision(globalX, globalY, tempSala)) {
+                    testPlayer.x = globalX;
+                    testPlayer.y = globalY;
+                    moved = true;
+                    console.log(`✅ ${testPlayer.nick} pre-movido a área segura (distancia ${dist}): (${globalX.toFixed(0)}, ${globalY.toFixed(0)})`);
+                    io.to(data.roomId).emit('playerMoved', { nick: testPlayer.nick, x: testPlayer.x, y: testPlayer.y });
+                    break;
+                  }
+                }
+                if (moved) break;
+              }
+            }
+            
+            if (!moved) {
+              // Último recurso: mover en la dirección opuesta al muro
+              const escapeAngle = Math.atan2(testPlayer.y - finalY, testPlayer.x - finalX);
+              testPlayer.x = finalX + Math.cos(escapeAngle) * 150;
+              testPlayer.y = finalY + Math.sin(escapeAngle) * 150;
+              console.log(`🆘 ${testPlayer.nick} movido a posición de emergencia: (${testPlayer.x.toFixed(0)}, ${testPlayer.y.toFixed(0)})`);
+              io.to(data.roomId).emit('playerMoved', { nick: testPlayer.nick, x: testPlayer.x, y: testPlayer.y });
+            }
+          }
+        }
+      }
+      
       const muro = {
         id: 'muro_piedra',
         colision: true,
-        x: data.targetX,
-        y: data.targetY,
+        x: finalX,
+        y: finalY,
         creado: Date.now(),
         duracion: mejora.duracion || 2000,
         color: mejora.color,
-        radius: modifiedRadius,
         width: mejora.width,
         height: mejora.height,
         angle: angle
       };
       murosPorSala[data.roomId].push(muro);
-      // Empujar jugadores atrapados
+      
+      // 🔄 Red de seguridad: Verificar una última vez si algún jugador quedó atrapado
+      // (esto solo debería activarse en casos extremos de timing/lag)
       const sala = salas.find(s => s.id === data.roomId && s.active);
       if (sala) {
         for (const player of sala.players) {
-          // Transformar la posición del jugador al sistema local del muro
           const cos = Math.cos(-muro.angle);
           const sin = Math.sin(-muro.angle);
           const relX = player.x - muro.x;
           const relY = player.y - muro.y;
           const localX = relX * cos - relY * sin;
           const localY = relX * sin + relY * cos;
-          const rx = muro.width + 32;
-          const ry = muro.height + 32;
+          const rx = muro.width + 12;
+          const ry = muro.height + 12;
+          
           if ((localX * localX) / (rx * rx) + (localY * localY) / (ry * ry) <= 1) {
-            // Empujar al jugador fuera del muro
-            // Calcular dirección normal desde el centro del muro
-            let normX = localX / rx;
-            let normY = localY / ry;
-            const normLen = Math.sqrt(normX * normX + normY * normY) || 1;
-            normX /= normLen;
-            normY /= normLen;
-            // Mover 50 unidades fuera del muro
-            const pushDist = 50;
-            const newLocalX = localX + normX * pushDist;
-            const newLocalY = localY + normY * pushDist;
-            // Transformar de vuelta a coordenadas globales
-            const globalX = muro.x + newLocalX * cos + newLocalY * sin;
-            const globalY = muro.y - newLocalX * sin + newLocalY * cos;
-            player.x = globalX;
-            player.y = globalY;
+            console.warn(`⚠️ Red de seguridad activada: ${player.nick} aún dentro del muro después de pre-movimiento`);
+            
+            // Mover inmediatamente en la dirección opuesta al centro del muro
+            const escapeAngle = Math.atan2(player.y - muro.y, player.x - muro.x);
+            player.x = muro.x + Math.cos(escapeAngle) * 120;
+            player.y = muro.y + Math.sin(escapeAngle) * 120;
+            
             io.to(data.roomId).emit('playerMoved', { nick: player.nick, x: player.x, y: player.y });
           }
         }
       }
-      // Emitir a la sala
+      // Emitir a la sala con la posición ajustada
       io.to(data.roomId).emit('wallPlaced', {
-        x: data.targetX,
-        y: data.targetY,
+        x: finalX,
+        y: finalY,
         creado: Date.now(),
         duracion: mejora.duracion || 2000,
         color: mejora.color,
-        radius: mejora.radius,
         width: mejora.width,
         height: mejora.height,
         angle: angle
@@ -542,6 +993,7 @@ io.on('connection', (socket) => {
       return; // No crear proyectil
     }
     if (mejora.id === 'suelo_sagrado') {
+      console.log('🌿 Creando Suelo Sagrado:', { x: data.x, y: data.y, radius: modifiedRadius, owner: data.owner });
       if (!sacredGroundsPorSala[data.roomId]) sacredGroundsPorSala[data.roomId] = [];
       sacredGroundsPorSala[data.roomId].push({
         x: data.x,
@@ -561,6 +1013,7 @@ io.on('connection', (socket) => {
         duration: mejora.duracion,
         owner: data.owner
       });
+      console.log('✅ Suelo Sagrado emitido a sala:', data.roomId);
       // Remover cast
       if (castsPorSala[data.roomId]) {
         castsPorSala[data.roomId] = castsPorSala[data.roomId].filter(cast =>
@@ -766,59 +1219,38 @@ io.on('connection', (socket) => {
       finalTargetY = player.y + Math.sin(angle) * mejora.maxRange;
     }
     
-    // Teletransportar
-    player.x = finalTargetX;
-    player.y = finalTargetY;
-    // Ajustar posición si colisiona con un muro
-    const maxIterations = 5;
-    for (let iteration = 0; iteration < maxIterations; iteration++) {
-      let adjusted = false;
-      if (murosPorSala[roomId]) {
-        for (const muro of murosPorSala[roomId]) {
-          if (muro.width && muro.height && typeof muro.angle === 'number') {
-            // Transformar la posición del jugador al sistema local del muro
-            const cos = Math.cos(-muro.angle);
-            const sin = Math.sin(-muro.angle);
-            const relX = player.x - muro.x;
-            const relY = player.y - muro.y;
-            const localX = relX * cos - relY * sin;
-            const localY = relX * sin + relY * cos;
-            const rx = muro.width + 32; // 32 = radio aproximado del player
-            const ry = muro.height + 32;
-            if ((localX * localX) / (rx * rx) + (localY * localY) / (ry * ry) <= 1) {
-              // Empujar al jugador fuera del muro
-              let normX = localX / rx;
-              let normY = localY / ry;
-              const normLen = Math.sqrt(normX * normX + normY * normY) || 1;
-              normX /= normLen;
-              normY /= normLen;
-              // Mover 100 unidades fuera del muro
-              const pushDist = 100;
-              const newLocalX = localX + normX * pushDist;
-              const newLocalY = localY + normY * pushDist;
-              // Transformar de vuelta a coordenadas globales
-              const globalX = muro.x + newLocalX * cos + newLocalY * sin;
-              const globalY = muro.y - newLocalX * sin + newLocalY * cos;
-              player.x = globalX;
-              player.y = globalY;
-              adjusted = true;
-            }
-          }
-        }
-      }
-      if (!adjusted) break;
+    // 🎯 Ajustar destino si colisiona con muros del mapa
+    const adjustedPosition = adjustPositionIfColliding(finalTargetX, finalTargetY, sala, 20);
+    
+    if (adjustedPosition.adjusted) {
+      console.log(`🔮 Teleport ajustado de (${finalTargetX}, ${finalTargetY}) a (${adjustedPosition.x}, ${adjustedPosition.y})`);
     }
-    // Emitir actualización
+    
+    // Teletransportar a la posición ajustada
+    player.x = adjustedPosition.x;
+    player.y = adjustedPosition.y;
+    // Emitir actualización general
     io.to(roomId).emit('playersUpdate', sala.players);
+    
+    // Emitir evento específico de teleport para forzar sincronización
+    io.to(roomId).emit('playerTeleported', {
+      nick: owner,
+      x: player.x,
+      y: player.y
+    });
   });
 
   socket.on('dashPlayer', (data) => {
-    const { roomId, targetX, targetY, owner } = data;
+    const { roomId, targetX, targetY, owner, mejoraId } = data;
     const sala = salas.find(s => s.id === roomId && s.active);
     if (!sala) return;
     const player = sala.players.find(p => p.nick === owner);
     if (!player) return;
-    const mejora = player.mejoras.find(m => m.id === 'embestida');
+    
+    // Buscar la mejora (puede ser embestida o salto_sombrio)
+    let mejora = player.mejoras.find(m => m.id === mejoraId || m.id === 'embestida');
+    let isShadowDash = mejoraId === 'salto_sombrio';
+    
     if (!mejora) return;
     
     // Ajustar el destino al rango máximo si está fuera de rango
@@ -834,12 +1266,44 @@ io.on('connection', (socket) => {
       finalTargetY = player.y + Math.sin(angle) * mejora.maxRange;
     }
     
+    // 🎯 Ajustar destino si colisiona con muros del mapa
+    const adjustedPosition = adjustPositionIfColliding(finalTargetX, finalTargetY, sala, 60);
+    
+    if (adjustedPosition.adjusted) {
+      console.log(`⚡ Dash ajustado de (${finalTargetX}, ${finalTargetY}) a (${adjustedPosition.x}, ${adjustedPosition.y})`);
+    }
+    
+    finalTargetX = adjustedPosition.x;
+    finalTargetY = adjustedPosition.y;
+    
     // Iniciar dash
     player.isDashing = true;
     player.dashTargetX = finalTargetX;
     player.dashTargetY = finalTargetY;
     player.dashSpeed = mejora.velocidad;
     player.dashHit = false;
+    player.dashMejoraId = mejora.id;
+    
+    // 🆕 Si es Salto de Sombra, aplicar invisibilidad
+    if (isShadowDash && mejora.effect && mejora.effect.type === 'invisibility') {
+      player.invisible = true;
+      player.invisibleUntil = Date.now() + mejora.effect.duration;
+      
+      // Emitir evento de invisibilidad
+      io.to(roomId).emit('playerInvisible', {
+        nick: owner,
+        duration: mejora.effect.duration
+      });
+    }
+    
+    // Emitir evento de inicio de dash para sincronizar posición inicial
+    io.to(roomId).emit('playerDashStarted', {
+      nick: owner,
+      startX: player.x,
+      startY: player.y,
+      targetX: finalTargetX,
+      targetY: finalTargetY
+    });
   });
 
   socket.on('activateAbility', (data) => {
@@ -855,6 +1319,45 @@ io.on('connection', (socket) => {
       player.speedBoostUntil = Date.now() + mejora.effect.duration;
     }
     // Emitir actualización
+    io.to(roomId).emit('playersUpdate', sala.players);
+  });
+
+  // 🆕 Actualizar ángulo del láser continuo
+  socket.on('updateLaserAngle', (data) => {
+    const { roomId, laserId, angle } = data;
+    if (!laseresContinuosPorSala[roomId]) return;
+    
+    const laser = laseresContinuosPorSala[roomId].find(l => l.id === laserId);
+    if (laser) {
+      laser.angle = angle;
+      
+      // Emitir actualización a todos los clientes
+      io.to(roomId).emit('laserAngleUpdate', {
+        id: laserId,
+        angle: angle
+      });
+    }
+  });
+
+  // Cancelar invisibilidad al disparar
+  socket.on('cancelInvisibility', (data) => {
+    const { roomId, owner } = data;
+    const sala = salas.find(s => s.id === roomId && s.active);
+    if (!sala) return;
+    const player = sala.players.find(p => p.nick === owner);
+    if (!player) return;
+    
+    // Cancelar invisibilidad
+    player.invisible = false;
+    player.invisibleUntil = 0;
+    
+    // Emitir evento específico para que todos vean al jugador inmediatamente
+    io.to(roomId).emit('playerVisibilityChanged', {
+      nick: owner,
+      invisible: false
+    });
+    
+    // También emitir actualización general
     io.to(roomId).emit('playersUpdate', sala.players);
   });
 
@@ -874,6 +1377,9 @@ io.on('connection', (socket) => {
 
   // Manejar desconexión de jugadores
   socket.on('disconnect', () => {
+    // Limpiar rate limiter al desconectarse
+    shootRateLimiter.delete(socket.id);
+    
     // Buscar en qué sala está este socket
     // Suponemos que cada jugador tiene un nick asociado al socket
     // Puedes guardar el nick en socket.nick al unirse
@@ -1067,34 +1573,45 @@ async function create1v1Room(player1, player2) {
 }
 
 // Función para iniciar automáticamente una batalla 1v1
-function iniciarBatalla1v1(roomId) {
+async function iniciarBatalla1v1(roomId) {
   const sala = salas.find(s => s.id === roomId && s.active);
   if (!sala) return;
   if (sala.players.length < 2) return;
   
   // 🎮 Crear escenario de batalla profesional
-  crearEscenarioBatalla(roomId);
+  await crearEscenarioBatalla(roomId);
   
   // Inicializar ronda por sala si no existe
   sala.round = 1;
-  // Distribuir hasta 4 jugadores en las esquinas
-  const offset = 200;
+  
+  // 🎯 Usar spawns del mapa personalizado si están disponibles
+  const mapSpawns = global.mapSpawns && global.mapSpawns[roomId];
+  
+  // Distribuir hasta 4 jugadores usando spawns del mapa o posiciones por defecto
   sala.players.forEach((player, i) => {
-    if (i === 0) { // esquina arriba-izquierda
-      player.x = offset;
-      player.y = offset;
-    } else if (i === 1) { // esquina arriba-derecha
-      player.x = 2500 - offset;
-      player.y = offset;
-    } else if (i === 2) { // esquina abajo-izquierda
-      player.x = offset;
-      player.y = 1500 - offset;
-    } else if (i === 3) { // esquina abajo-derecha
-      player.x = 2500 - offset;
-      player.y = 1500 - offset;
+    if (mapSpawns && mapSpawns[i]) {
+      // Usar spawn del mapa
+      player.x = mapSpawns[i].x;
+      player.y = mapSpawns[i].y;
     } else {
-      player.x = 1250;
-      player.y = 750;
+      // Usar posiciones por defecto en esquinas
+      const offset = 200;
+      if (i === 0) { // esquina arriba-izquierda
+        player.x = offset;
+        player.y = offset;
+      } else if (i === 1) { // esquina arriba-derecha
+        player.x = 2500 - offset;
+        player.y = offset;
+      } else if (i === 2) { // esquina abajo-izquierda
+        player.x = offset;
+        player.y = 1500 - offset;
+      } else if (i === 3) { // esquina abajo-derecha
+        player.x = 2500 - offset;
+        player.y = 1500 - offset;
+      } else {
+        player.x = 1250;
+        player.y = 750;
+      }
     }
     
     // Usar stats personalizadas si existen, sino usar valores por defecto
@@ -1367,6 +1884,32 @@ app.post('/saveInventory', (req, res) => {
 });
 
 // ============================================
+// ENDPOINT PARA GUARDAR MAPAS DEL EDITOR
+// ============================================
+import fs from 'fs/promises';
+
+app.post('/save-map', async (req, res) => {
+  try {
+    const { content } = req.body;
+    
+    if (!content) {
+      return res.status(400).json({ error: 'Contenido del mapa requerido.' });
+    }
+    
+    // Guardar en el archivo mapas.js en el frontend
+    const mapasPath = path.join(__dirname, '../frontend/mapas.js');
+    await fs.writeFile(mapasPath, content, 'utf8');
+    
+    console.log('✅ Mapa guardado exitosamente en mapas.js');
+    res.json({ success: true, message: 'Mapa guardado exitosamente' });
+    
+  } catch (error) {
+    console.error('Error al guardar mapa:', error);
+    res.status(500).json({ error: 'Error al guardar el mapa: ' + error.message });
+  }
+});
+
+// ============================================
 // ENDPOINT PARA ACTUALIZAR ORO DEL JUGADOR
 // ============================================
 app.post('/updateGold', (req, res) => {
@@ -1407,32 +1950,242 @@ const castsPorSala = {}; // Casteos activos por sala
 const muddyGroundsPorSala = {}; // Suelos fangosos por sala
 const murosPorSala = {}; // Muros de piedra por sala
 const sacredGroundsPorSala = {}; // Suelos sagrados por sala
+const tornadosPorSala = {}; // Tornados activos por sala
+const hookPullsPorSala = {}; // Jalados activos del gancho por sala
+// 🆕 Nuevas estructuras para habilidades
+const laseresContinuosPorSala = {}; // Láseres continuos activos
+const camposEspinasPorSala = {}; // Campos de espinas activos
+const aurasRegeneracionPorSala = {}; // Auras de regeneración activas
+const bombasTiempoPorSala = {}; // Bombas de tiempo activas
+const efectosEstadoPorJugador = {}; // Efectos de estado (stun, invisibilidad, etc.)
 
-// 🎮 Función para crear el escenario de batalla usando el sistema procedural
-function crearEscenarioBatalla(roomId, roundNumber = 1) {
+// 🎮 Función para cargar mapas personalizados
+async function loadCustomMaps() {
+  try {
+    const mapasPath = path.join(__dirname, '../frontend/mapas.js');
+    const content = await fs.readFile(mapasPath, 'utf8');
+    
+    // Parsear el array de mapas
+    const match = content.match(/export const MAPAS = (\[[\s\S]*?\]);/);
+    if (match && match[1]) {
+      const mapas = JSON.parse(match[1]);
+      return mapas;
+    }
+    return [];
+  } catch (error) {
+    return [];
+  }
+}
+
+// 🎮 Función para crear el escenario de batalla con mapas aleatorios
+async function crearEscenarioBatalla(roomId, roundNumber = 1) {
   // Limpiar muros existentes
   murosPorSala[roomId] = [];
   
-  // Usar el nuevo sistema procedural para generar todos los bloques
-  const bloques = generarBloquesPorRonda(roomId, roundNumber);
+  // Intentar cargar un mapa personalizado aleatorio
+  const customMaps = await loadCustomMaps();
   
-  // Almacenar los bloques generados
-  murosPorSala[roomId] = bloques;
+  if (customMaps.length > 0) {
+    // Seleccionar mapa aleatorio
+    const randomIndex = Math.floor(Math.random() * customMaps.length);
+    const selectedMap = customMaps[randomIndex];
+    
+    // Convertir bloques del mapa al formato del juego (IGUAL que bloques procedurales + shape para renderizado)
+    murosPorSala[roomId] = selectedMap.blocks.map(block => ({
+      x: block.x,
+      y: block.y,
+      width: block.width,
+      height: block.height,
+      angle: block.angle,
+      color: block.color,
+      shape: block.shape, // Mantener shape para el renderizado en frontend
+      colision: block.colision !== false, // Usar colision del mapa, por defecto true
+      duracion: Infinity, // Permanentes (no expiran)
+      creado: 0, // ✅ CRÍTICO: Timestamp 0 para que nunca expiren en el filtro de duración
+      radius: block.shape === 'circle' ? block.width / 2 : undefined, // Para círculos
+      tipo: block.type || 'mapa_bloque',
+      muroMapa: true // Identificar como bloque permanente del mapa
+    }));
+    
+    // Guardar spawns del mapa (si existen)
+    if (selectedMap.spawns && selectedMap.spawns.length === 4) {
+      // Guardar spawns para usar al posicionar jugadores
+      if (!global.mapSpawns) global.mapSpawns = {};
+      global.mapSpawns[roomId] = selectedMap.spawns;
+    }
+  } else {
+  }
+}
+
+// Función para ajustar una posición cuando colisiona con muros
+// Encuentra el punto válido más cercano empujando la posición fuera de los muros
+function adjustPositionIfColliding(x, y, sala, radius = 50) {
+  let adjustedX = x;
+  let adjustedY = y;
+  let maxAttempts = 20; // Máximo número de intentos para encontrar posición válida
+  let attempt = 0;
   
-  console.log(`✨ Escenario RONDA ${roundNumber} creado para sala ${roomId} con ${murosPorSala[roomId].length} bloques`);
+  while (attempt < maxAttempts) {
+    const collision = checkCollision(adjustedX, adjustedY, sala);
+    
+    if (!collision) {
+      // No hay colisión, posición válida encontrada
+      return { x: adjustedX, y: adjustedY, adjusted: attempt > 0 };
+    }
+    
+    // Hay colisión, empujar en dirección de la normal
+    const pushDistance = radius;
+    adjustedX += collision.normalX * pushDistance;
+    adjustedY += collision.normalY * pushDistance;
+    
+    attempt++;
+  }
+  
+  // Si después de todos los intentos aún hay colisión, devolver posición original
+  // (es mejor intentar poner la habilidad que no ponerla)
+  console.warn(`⚠️ No se pudo encontrar posición válida para habilidad en (${x}, ${y})`);
+  return { x, y, adjusted: false };
+}
+
+// Función auxiliar para detectar intersección entre una línea y un rectángulo
+function lineIntersectsRect(x1, y1, x2, y2, rectX, rectY, rectWidth, rectHeight) {
+  // Verificar si algún extremo de la línea está dentro del rectángulo
+  const insideStart = (x1 >= rectX && x1 <= rectX + rectWidth && y1 >= rectY && y1 <= rectY + rectHeight);
+  const insideEnd = (x2 >= rectX && x2 <= rectX + rectWidth && y2 >= rectY && y2 <= rectY + rectHeight);
+  
+  if (insideStart || insideEnd) return true;
+  
+  // Verificar intersección con cada lado del rectángulo
+  // Top
+  if (lineIntersectsLine(x1, y1, x2, y2, rectX, rectY, rectX + rectWidth, rectY)) return true;
+  // Bottom
+  if (lineIntersectsLine(x1, y1, x2, y2, rectX, rectY + rectHeight, rectX + rectWidth, rectY + rectHeight)) return true;
+  // Left
+  if (lineIntersectsLine(x1, y1, x2, y2, rectX, rectY, rectX, rectY + rectHeight)) return true;
+  // Right
+  if (lineIntersectsLine(x1, y1, x2, y2, rectX + rectWidth, rectY, rectX + rectWidth, rectY + rectHeight)) return true;
+  
+  return false;
+}
+
+// Función auxiliar para detectar intersección entre dos líneas
+function lineIntersectsLine(x1, y1, x2, y2, x3, y3, x4, y4) {
+  const den = (x1 - x2) * (y3 - y4) - (y1 - y2) * (x3 - x4);
+  if (den === 0) return false;
+  
+  const t = ((x1 - x3) * (y3 - y4) - (y1 - y3) * (x3 - x4)) / den;
+  const u = -((x1 - x2) * (y1 - y3) - (y1 - y2) * (x1 - x3)) / den;
+  
+  return t >= 0 && t <= 1 && u >= 0 && u <= 1;
 }
 
 // Función para verificar colisión en una posición dada y devolver el obstáculo que colisiona
 // Ahora también retorna la normal de colisión para mejorar el sliding
 function checkCollision(x, y, sala) {
+  if (!sala || !sala.id) {
+    return null;
+  }
+  
   // Verificar colisión con muros
-  if (murosPorSala[sala.id]) {
+  if (murosPorSala[sala.id] && murosPorSala[sala.id].length > 0) {
     for (const muro of murosPorSala[sala.id]) {
       // Si el muro tiene colisión desactivada, saltarlo
-      if (!muro.colision) continue;
+      if (muro.colision === false) continue;
       
+      // PRIORIDAD MAXIMA: Bloques del editor con shape definido
+      if (muro.shape === 'rect' || muro.shape === 'triangle') {
+        const cos = Math.cos(-(muro.angle || 0));
+        const sin = Math.sin(-(muro.angle || 0));
+        const relX = x - muro.x;
+        const relY = y - muro.y;
+        const localX = relX * cos - relY * sin;
+        const localY = relX * sin + relY * cos;
+        
+        const halfWidth = muro.width / 2 + 12;
+        const halfHeight = muro.height / 2 + 12;
+        
+        if (Math.abs(localX) <= halfWidth && Math.abs(localY) <= halfHeight) {
+          let normX = 0, normY = 0;
+          const distLeft = halfWidth + localX;
+          const distRight = halfWidth - localX;
+          const distTop = halfHeight + localY;
+          const distBottom = halfHeight - localY;
+          
+          const minDist = Math.min(distLeft, distRight, distTop, distBottom);
+          if (minDist === distLeft) normX = -1;
+          else if (minDist === distRight) normX = 1;
+          else if (minDist === distTop) normY = -1;
+          else if (minDist === distBottom) normY = 1;
+          
+          const cosR = Math.cos(muro.angle || 0);
+          const sinR = Math.sin(muro.angle || 0);
+          const globalNormX = normX * cosR - normY * sinR;
+          const globalNormY = normX * sinR + normY * cosR;
+          
+          return { muro, normalX: globalNormX, normalY: globalNormY };
+        }
+        continue; // Ya procesamos este muro, siguiente
+      }
+      if (muro.shape === 'circle') {
+        const dx = x - muro.x;
+        const dy = y - muro.y;
+        const distance = Math.sqrt(dx * dx + dy * dy);
+        const totalRadius = (muro.radius || muro.width / 2) + 12;
+        
+        if (distance < totalRadius) {
+          const normX = dx / distance;
+          const normY = dy / distance;
+          return { muro, normalX: normX, normalY: normY };
+        }
+        continue; // Ya procesamos este muro, siguiente
+      }
+      
+      // � COLISIÓN UNIFICADA: Todos los bloques usan el mismo sistema
+      // PRIORIDAD 1: Si tiene width y height (como muro_piedra), usar colisión ovalada
+      if (muro.width && muro.height && !muro.radius && !muro.shape) {
+        // Colisión ovalada (muro_piedra y otros)
+        const angle = muro.angle || 0;
+        const cos = Math.cos(-angle);
+        const sin = Math.sin(-angle);
+        const relX = x - muro.x;
+        const relY = y - muro.y;
+        const localX = relX * cos - relY * sin;
+        const localY = relX * sin + relY * cos;
+        const rx = muro.width + 12;
+        const ry = muro.height + 12;
+        if ((localX * localX) / (rx * rx) + (localY * localY) / (ry * ry) <= 1) {
+          // Calcular la normal del óvalo en el punto de colisión
+          const normalLocalX = (2 * localX) / (rx * rx);
+          const normalLocalY = (2 * localY) / (ry * ry);
+          const normalLength = Math.sqrt(normalLocalX * normalLocalX + normalLocalY * normalLocalY) || 1;
+          const normX = normalLocalX / normalLength;
+          const normY = normalLocalY / normalLength;
+          
+          // Transformar normal a sistema global
+          const cosR = Math.cos(angle);
+          const sinR = Math.sin(angle);
+          const globalNormX = normX * cosR - normY * sinR;
+          const globalNormY = normX * sinR + normY * cosR;
+          
+          return { muro, normalX: globalNormX, normalY: globalNormY };
+        }
+      }
+      // PRIORIDAD 2: Si tiene radius definido (y NO tiene width/height), es un círculo
+      else if (muro.radius && !muro.width && !muro.height) {
+        const dx = x - muro.x;
+        const dy = y - muro.y;
+        const distance = Math.sqrt(dx * dx + dy * dy);
+        const totalRadius = muro.radius + 12; // 12px = radio del jugador
+        
+        if (distance < totalRadius) {
+          // Normal apunta desde el centro del círculo hacia el jugador
+          const normX = dx / distance;
+          const normY = dy / distance;
+          return { muro, normalX: normX, normalY: normY };
+        }
+      }
       // 🪨 Si el muro tiene imagen con forma rectangular (como muro_roca), usar colisión AABB rotada
-      if ((muro.imagen || muro.tipo === 'muro_roca') && muro.forma !== 'ovalada') {
+      else if ((muro.imagen || muro.tipo === 'muro_roca') && muro.forma !== 'ovalada') {
         // Colisión rectangular con rotación (AABB rotado)
         const cos = Math.cos(-muro.angle);
         const sin = Math.sin(-muro.angle);
@@ -1467,153 +2220,114 @@ function checkCollision(x, y, sala) {
           
           return { muro, normalX: globalNormX, normalY: globalNormY };
         }
-      } else {
-        // Colisión ovalada para otros muros (muro_piedra y otros)
-        const cos = Math.cos(-muro.angle);
-        const sin = Math.sin(-muro.angle);
-        const relX = x - muro.x;
-        const relY = y - muro.y;
-        const localX = relX * cos - relY * sin;
-        const localY = relX * sin + relY * cos;
-        const rx = muro.width + 32;
-        const ry = muro.height + 32;
-        if ((localX * localX) / (rx * rx) + (localY * localY) / (ry * ry) <= 1) {
-          // Calcular la normal del óvalo en el punto de colisión
-          const normalLocalX = (2 * localX) / (rx * rx);
-          const normalLocalY = (2 * localY) / (ry * ry);
-          const normalLength = Math.sqrt(normalLocalX * normalLocalX + normalLocalY * normalLocalY) || 1;
-          const normX = normalLocalX / normalLength;
-          const normY = normalLocalY / normalLength;
-          
-          // Transformar normal a sistema global
-          const cosR = Math.cos(muro.angle);
-          const sinR = Math.sin(muro.angle);
-          const globalNormX = normX * cosR - normY * sinR;
-          const globalNormY = normX * sinR + normY * cosR;
-          
-          return { muro, normalX: globalNormX, normalY: globalNormY };
-        }
       }
     }
   }
   return null; // No colisiona
 }
 
-// Loop global de movimiento server-authoritative (procesa keyStates y emite playerMoved)
-// Mejorado para 60 tickrate (cada ~16ms) con envío optimizado
+// ============================================
+// 🎮 SISTEMA DE MOVIMIENTO EN TIEMPO REAL - ESTILO BATTLERITE
+// ============================================
+// Loop de movimiento a 60 tickrate (16.67ms) para movimiento fluido sin temblor
+const TICK_RATE = 60; // 60 ticks por segundo (equilibrio perfecto)
+const TICK_INTERVAL = 1000 / TICK_RATE; // ~16.67ms
+const MOVEMENT_THRESHOLD = 0.1; // Umbral mínimo de movimiento para evitar micro-actualizaciones
+
 setInterval(() => {
   // Procesar cada sala activa
   for (const sala of salas) {
     if (!sala.active) continue;
-    const updates = []; // Acumular actualizaciones para envío en batch
     
     for (const player of sala.players) {
-      if (!player.keyStates) continue;
+      if (!player.keyStates || player.defeated || player.beingPulled) continue;
+      
       let dx = 0, dy = 0;
       if (player.keyStates.w) dy -= 1;
       if (player.keyStates.s) dy += 1;
       if (player.keyStates.a) dx -= 1;
       if (player.keyStates.d) dx += 1;
       
-      if (dx !== 0 || dy !== 0) {
-        const length = Math.sqrt(dx * dx + dy * dy) || 1;
-        dx /= length;
-        dy /= length;
-        const moveDistance = (player.speed || DEFAULT_SPEED);
-        let tempX = (typeof player.x === 'number' ? player.x : 1000) + dx * moveDistance;
-        let tempY = (typeof player.y === 'number' ? player.y : 600) + dy * moveDistance;
+      // Solo procesar si hay movimiento
+      if (dx === 0 && dy === 0) continue;
+      
+      // Normalizar dirección para movimiento diagonal consistente
+      const length = Math.sqrt(dx * dx + dy * dy);
+      dx /= length;
+      dy /= length;
+      
+      // Calcular movimiento (velocidad ajustada por tick rate)
+      let speed = (player.speed || DEFAULT_SPEED);
+      
+      // 🆕 Aplicar slow del láser si está activo
+      if (player.laserSlowActive) {
+        speed = speed * 0.1; // 90% de reducción
+      }
+      
+      const newX = player.x + dx * speed;
+      const newY = player.y + dy * speed;
+      
+      // Aplicar límites del mapa
+      let finalX = Math.max(0, Math.min(2500, newX));
+      let finalY = Math.max(0, Math.min(1500, newY));
+      
+      // Sistema de sliding suave con colisiones
+      const collision = checkCollision(finalX, finalY, sala);
+      
+      if (collision) {
+        // Sliding perfecto usando la normal de colisión
+        const normal = { x: collision.normalX, y: collision.normalY };
+        const moveVecX = finalX - player.x;
+        const moveVecY = finalY - player.y;
+        const dot = moveVecX * normal.x + moveVecY * normal.y;
         
-        // Clamp to map boundaries
-        tempX = Math.max(0, Math.min(2500, tempX));
-        tempY = Math.max(0, Math.min(1500, tempY));
-        
-        // 🎮 SISTEMA DE SLIDING MEJORADO CON NORMALES
-        let newX = player.x;
-        let newY = player.y;
-        
-        // Primero intentar el movimiento completo
-        const collision = checkCollision(tempX, tempY, sala);
-        if (!collision) {
-          // Sin colisión, mover libremente
-          newX = tempX;
-          newY = tempY;
-        } else {
-          // Hay colisión - usar la normal para calcular el deslizamiento perfecto
-          const normal = { x: collision.normalX, y: collision.normalY };
+        if (dot < 0) {
+          // Proyectar movimiento a lo largo de la superficie
+          const slideX = moveVecX - dot * normal.x;
+          const slideY = moveVecY - dot * normal.y;
+          const slideTargetX = player.x + slideX;
+          const slideTargetY = player.y + slideY;
           
-          // Normalizar el vector de dirección del movimiento
-          const moveVecX = tempX - player.x;
-          const moveVecY = tempY - player.y;
-          
-          // Calcular el producto punto entre el movimiento y la normal
-          const dot = moveVecX * normal.x + moveVecY * normal.y;
-          
-          // Si el jugador se está moviendo hacia la pared (dot < 0), aplicar sliding
-          if (dot < 0) {
-            // Proyectar el vector de movimiento a lo largo de la superficie (perpendicular a la normal)
-            // slideVector = moveVector - (moveVector · normal) * normal
-            const slideX = moveVecX - dot * normal.x;
-            const slideY = moveVecY - dot * normal.y;
-            
-            // Aplicar el movimiento de deslizamiento
-            const slideTargetX = player.x + slideX;
-            const slideTargetY = player.y + slideY;
-            
-            // Verificar que el deslizamiento no cause otra colisión
-            if (!checkCollision(slideTargetX, slideTargetY, sala)) {
-              newX = slideTargetX;
-              newY = slideTargetY;
-            } else {
-              // Si el deslizamiento completo falla, intentar con velocidad reducida
-              const reducedSlideX = player.x + slideX * 0.5;
-              const reducedSlideY = player.y + slideY * 0.5;
-              
-              if (!checkCollision(reducedSlideX, reducedSlideY, sala)) {
-                newX = reducedSlideX;
-                newY = reducedSlideY;
-              } else {
-                // Último recurso: intentar movimientos en ejes separados
-                const onlyX = player.x + dx * moveDistance;
-                if (!checkCollision(onlyX, player.y, sala)) {
-                  newX = onlyX;
-                } else {
-                  const onlyY = player.y + dy * moveDistance;
-                  if (!checkCollision(player.x, onlyY, sala)) {
-                    newY = onlyY;
-                  }
-                }
-              }
-            }
+          if (!checkCollision(slideTargetX, slideTargetY, sala)) {
+            finalX = slideTargetX;
+            finalY = slideTargetY;
           } else {
-            // El jugador se está alejando de la pared, permitir movimiento normal en ejes
-            const onlyX = player.x + dx * moveDistance;
-            if (!checkCollision(onlyX, player.y, sala)) {
-              newX = onlyX;
-            }
-            const onlyY = player.y + dy * moveDistance;
-            if (!checkCollision(player.x, onlyY, sala)) {
-              newY = onlyY;
+            // Sliding reducido
+            const reducedX = player.x + slideX * 0.3;
+            const reducedY = player.y + slideY * 0.3;
+            if (!checkCollision(reducedX, reducedY, sala)) {
+              finalX = reducedX;
+              finalY = reducedY;
+            } else {
+              finalX = player.x;
+              finalY = player.y;
             }
           }
-        }
-        
-        // Update position if changed
-        if (newX !== player.x || newY !== player.y) {
-          player.x = newX;
-          player.y = newY;
-          updates.push({ nick: player.nick, x: player.x, y: player.y });
+        } else {
+          finalX = player.x;
+          finalY = player.y;
         }
       }
-    }
-    
-    // Enviar todas las actualizaciones en batch para reducir overhead de red
-    if (updates.length > 0) {
-      for (const update of updates) {
-        io.to(sala.id).emit('playerMoved', update);
+      
+      // Actualizar posición solo si el cambio es significativo (evita temblor)
+      const deltaX = finalX - player.x;
+      const deltaY = finalY - player.y;
+      const movementDistance = Math.sqrt(deltaX * deltaX + deltaY * deltaY);
+      
+      if (movementDistance > MOVEMENT_THRESHOLD) {
+        player.x = finalX;
+        player.y = finalY;
+        
+        // Enviar actualización
+        io.to(sala.id).emit('playerMoved', {
+          nick: player.nick,
+          x: Math.round(player.x * 10) / 10, // Redondear a 1 decimal para reducir jitter
+          y: Math.round(player.y * 10) / 10
+        });
       }
     }
   }
-}, 16); // 60 FPS tick rate para movimiento más suave
+}, TICK_INTERVAL);
 
 // Utilidad para obtener el daño de una mejora
 function getDanioMejora(mejoraId, ownerNick = null, sala = null) {
@@ -1800,7 +2514,7 @@ function handleExplosion(sala, proyectil, io) {
 // Loop de simulación (16.67ms ~ 60 FPS)
 const SIMULATION_DT = 1000 / 60;
 
-setInterval(() => {
+setInterval(async () => {
   for (const sala of salas) {
     if (!sala.active) continue;
     const proyectiles = proyectilesPorSala[sala.id] || [];
@@ -1823,6 +2537,18 @@ setInterval(() => {
       if (jugador.shieldUntil && now > jugador.shieldUntil) {
         jugador.shieldAmount = 0;
         jugador.shieldUntil = 0;
+      }
+      
+      // 🆕 Expirar invisibilidad
+      if (jugador.invisible && jugador.invisibleUntil && now > jugador.invisibleUntil) {
+        jugador.invisible = false;
+        jugador.invisibleUntil = 0;
+        // Emitir posición final cuando reaparece
+        io.to(sala.id).emit('playerVisible', { 
+          nick: jugador.nick,
+          x: jugador.x,
+          y: jugador.y
+        });
       }
       // Si la vida es 0 y no está derrotado, marcar como derrotado
       if (jugador.health <= 0 && !jugador.defeated) {
@@ -1869,6 +2595,304 @@ setInterval(() => {
         // Remover suelos expirados
         sacredGroundsPorSala[sala.id] = sacredGroundsPorSala[sala.id].filter(g => now - g.createdAt < g.duration);
       }
+    
+    // 🆕 Lógica de Láseres Continuos
+    if (laseresContinuosPorSala[sala.id]) {
+      for (let i = laseresContinuosPorSala[sala.id].length - 1; i >= 0; i--) {
+        const laser = laseresContinuosPorSala[sala.id][i];
+        const laserAge = now - laser.createdAt;
+        
+        // Remover si expiró
+        if (laserAge > laser.duracion) {
+          // 🆕 Restaurar velocidad del jugador si era el nuevo láser
+          if (laser.mejoraId === 'laser') {
+            const lanzador = jugadores.find(p => p.nick === laser.owner);
+            if (lanzador) {
+              lanzador.laserSlowActive = false;
+            }
+          }
+          
+          io.to(sala.id).emit('laserRemoved', { id: laser.id });
+          laseresContinuosPorSala[sala.id].splice(i, 1);
+          continue;
+        }
+        
+        // 🆕 Actualizar posición del láser para que siga al jugador
+        if (laser.mejoraId === 'laser') {
+          const lanzador = jugadores.find(p => p.nick === laser.owner);
+          if (lanzador && !lanzador.defeated) {
+            laser.x = lanzador.x;
+            laser.y = lanzador.y;
+            
+            // Emitir actualización de posición
+            io.to(sala.id).emit('laserPositionUpdate', {
+              id: laser.id,
+              x: laser.x,
+              y: laser.y
+            });
+          }
+        }
+        
+        // Hacer daño cada intervalo
+        if (!laser.lastDamageTime || now - laser.lastDamageTime >= laser.damageInterval) {
+          laser.lastDamageTime = now;
+          
+          // Calcular el punto final del láser
+          const endX = laser.x + Math.cos(laser.angle) * laser.maxRange;
+          const endY = laser.y + Math.sin(laser.angle) * laser.maxRange;
+          
+          // 🆕 Detectar si el láser atraviesa muros (solo para el nuevo láser)
+          let penetratedWall = false;
+          if (laser.canPenetrateWalls && murosPorSala[sala.id]) {
+            for (const muro of murosPorSala[sala.id]) {
+              // Verificar intersección línea-rectángulo
+              if (lineIntersectsRect(laser.x, laser.y, endX, endY, muro.x, muro.y, muro.width, muro.height)) {
+                penetratedWall = true;
+                break;
+              }
+            }
+          }
+          
+          // Detectar jugadores en la línea del láser
+          let hasHitTarget = false; // Para rastrear si el láser impactó a alguien (para curación)
+          
+          for (const jugador of jugadores) {
+            if (jugador.defeated || jugador.nick === laser.owner) continue;
+            
+            // Calcular distancia punto a línea
+            const dx = endX - laser.x;
+            const dy = endY - laser.y;
+            const lenSq = dx * dx + dy * dy;
+            if (lenSq === 0) continue;
+            
+            const t = Math.max(0, Math.min(1, ((jugador.x - laser.x) * dx + (jugador.y - laser.y) * dy) / lenSq));
+            const projX = laser.x + t * dx;
+            const projY = laser.y + t * dy;
+            
+            const distToLine = Math.sqrt((jugador.x - projX) ** 2 + (jugador.y - projY) ** 2);
+            
+            // Si está dentro del radio del láser (hitbox)
+            if (distToLine <= laser.radius + 32) {
+              hasHitTarget = true; // El láser impactó a un enemigo
+              
+              // Calcular daño (reducido si atravesó muro)
+              let damageAmount = laser.damage;
+              if (penetratedWall && laser.wallDamageReduction) {
+                damageAmount = Math.floor(damageAmount * (1 - laser.wallDamageReduction));
+              }
+              
+              // Aplicar daño considerando escudo
+              if (jugador.shieldAmount > 0) {
+                const shieldDamage = Math.min(jugador.shieldAmount, damageAmount);
+                jugador.shieldAmount -= shieldDamage;
+                const remainingDamage = damageAmount - shieldDamage;
+                jugador.health -= remainingDamage;
+                
+                io.to(sala.id).emit('shieldHit', {
+                  nick: jugador.nick,
+                  shieldDamage,
+                  remainingShield: jugador.shieldAmount
+                });
+              } else {
+                jugador.health -= damageAmount;
+              }
+              
+              jugador.lastAttacker = laser.owner;
+              
+              io.to(sala.id).emit('hitEvent', {
+                projectileId: laser.id,
+                target: jugador.nick,
+                x: jugador.x,
+                y: jugador.y,
+                damage: damageAmount
+              });
+            }
+          }
+          
+          // 🆕 Curación del dueño del láser si impactó a un enemigo
+          if (hasHitTarget && laser.healPerSecond > 0) {
+            const lanzador = jugadores.find(p => p.nick === laser.owner);
+            if (lanzador && !lanzador.defeated) {
+              const healAmount = laser.healPerSecond;
+              lanzador.health = Math.min(100, lanzador.health + healAmount);
+              
+              io.to(sala.id).emit('healEvent', {
+                target: lanzador.nick,
+                amount: healAmount,
+                type: 'laser_heal'
+              });
+            }
+          }
+        }
+      }
+    }
+    
+    // 🆕 Lógica de Tornados con atracción, daño continuo y slow
+    if (tornadosPorSala[sala.id]) {
+      for (let i = tornadosPorSala[sala.id].length - 1; i >= 0; i--) {
+        const tornado = tornadosPorSala[sala.id][i];
+        const tornadoAge = now - tornado.createdAt;
+        
+        // Remover si expiró
+        if (tornadoAge > tornado.duration) {
+          io.to(sala.id).emit('tornadoRemoved', { id: tornado.id });
+          tornadosPorSala[sala.id].splice(i, 1);
+          continue;
+        }
+        
+        // 🌪️ Crecimiento del tornado (crece durante el primer segundo)
+        if (tornado.radius < tornado.maxRadius) {
+          tornado.radius = Math.min(tornado.maxRadius, tornado.radius + tornado.growthRate * SIMULATION_DT);
+        }
+        
+        // Mover el tornado aleatoriamente (solo si ya ha crecido completamente)
+        if (tornado.radius >= tornado.maxRadius) {
+          if (now >= tornado.moveChangeTime) {
+            tornado.moveAngle = Math.random() * Math.PI * 2;
+            tornado.moveChangeTime = now + 1000; // Cambiar dirección cada segundo
+          }
+          tornado.x += Math.cos(tornado.moveAngle) * tornado.moveSpeed;
+          tornado.y += Math.sin(tornado.moveAngle) * tornado.moveSpeed;
+          // Mantener dentro de los límites del mapa
+          tornado.x = Math.max(tornado.radius, Math.min(2500 - tornado.radius, tornado.x));
+          tornado.y = Math.max(tornado.radius, Math.min(1500 - tornado.radius, tornado.y));
+        }
+        
+        // Emitir posición y tamaño actualizado del tornado
+        io.to(sala.id).emit('tornadoUpdate', {
+          id: tornado.id,
+          x: tornado.x,
+          y: tornado.y,
+          radius: tornado.radius
+        });
+        
+        // Solo aplicar daño y efectos si el tornado está completamente crecido
+        if (tornado.radius >= tornado.maxRadius) {
+          // 💥 Explosión de sabor: crear explosiones periódicas
+          if (tornado.hasExplosionSabor && now - tornado.lastExplosionTime >= tornado.explosionInterval) {
+            tornado.lastExplosionTime = now;
+            
+            // Crear explosión en el centro del tornado
+            io.to(sala.id).emit('explosion', {
+              x: tornado.x,
+              y: tornado.y,
+              color: '#FFA500', // Naranja
+              radius: tornado.explosionRadius,
+              duration: 600
+            });
+            
+            // Daño adicional de explosión a todos en el área
+            for (const jugador of jugadores) {
+              if (jugador.defeated || jugador.nick === tornado.owner) continue;
+              
+              const dx = jugador.x - tornado.x;
+              const dy = jugador.y - tornado.y;
+              const dist = Math.sqrt(dx * dx + dy * dy);
+              
+              if (dist <= tornado.explosionRadius + 32) {
+                jugador.lastAttacker = tornado.owner;
+                const explosionDamage = Math.floor(tornado.damagePerTick * 0.5); // 50% del daño del tornado
+                applyDamage(jugador, explosionDamage, io, sala.id, 'tornado_explosion');
+              }
+            }
+          }
+          
+          // Aplicar daño periódico
+          if (now - tornado.lastDamageTick >= tornado.tickRate) {
+            tornado.lastDamageTick = now;
+            
+            // Detectar jugadores en el área y aplicar daño
+            for (const jugador of jugadores) {
+              if (jugador.defeated || jugador.nick === tornado.owner) continue;
+              
+              const dx = jugador.x - tornado.x;
+              const dy = jugador.y - tornado.y;
+              const dist = Math.sqrt(dx * dx + dy * dy);
+              
+              // Si está dentro del radio del tornado
+              if (dist <= tornado.radius + 32) {
+                jugador.lastAttacker = tornado.owner;
+                applyDamage(jugador, tornado.damagePerTick, io, sala.id, 'tornado');
+              }
+            }
+          }
+          
+          // Aplicar atracción y slow a jugadores cercanos
+          for (const jugador of jugadores) {
+            if (jugador.defeated || jugador.nick === tornado.owner || jugador.beingPulled) continue;
+            
+            const dx = jugador.x - tornado.x;
+            const dy = jugador.y - tornado.y;
+            const dist = Math.sqrt(dx * dx + dy * dy);
+            
+            // Si está dentro del radio de succión
+            if (dist <= tornado.radius + 32) {
+              // Atraer hacia el centro
+              if (dist > 10) { // Evitar división por cero
+                const pullX = -(dx / dist) * tornado.pullForce;
+                const pullY = -(dy / dist) * tornado.pullForce;
+                
+                jugador.x += pullX;
+                jugador.y += pullY;
+                
+                // Mantener dentro de los límites del mapa
+                jugador.x = Math.max(0, Math.min(2500, jugador.x));
+                jugador.y = Math.max(0, Math.min(1500, jugador.y));
+              }
+              
+              // Aplicar slow si no está ya slowed por otra fuente
+              if (!jugador.slowUntil || jugador.slowUntil < now) {
+                jugador.speed = DEFAULT_SPEED * (1 - tornado.slowAmount);
+                jugador.tornadoSlowed = true;
+              }
+            } else {
+              // Fuera del tornado, restaurar velocidad si estaba slowed por tornado
+              if (jugador.tornadoSlowed) {
+                jugador.speed = DEFAULT_SPEED;
+                jugador.tornadoSlowed = false;
+              }
+            }
+          }
+        }
+      }
+    }
+    
+    // 🪝 Procesar jalados activos del gancho (animación fluida)
+    if (hookPullsPorSala[sala.id]) {
+      for (let i = hookPullsPorSala[sala.id].length - 1; i >= 0; i--) {
+        const pull = hookPullsPorSala[sala.id][i];
+        const elapsed = now - pull.startTime;
+        const progress = Math.min(elapsed / pull.duration, 1);
+        
+        // Encontrar al jugador siendo jalado
+        const targetPlayer = sala.players.find(p => p.nick === pull.targetNick);
+        if (!targetPlayer) {
+          hookPullsPorSala[sala.id].splice(i, 1);
+          continue;
+        }
+        
+        // Marcar al jugador como siendo jalado (bloquea movimiento normal)
+        targetPlayer.beingPulled = true;
+        
+        // Interpolación suave usando easing (ease-out para desaceleración)
+        const easeProgress = 1 - Math.pow(1 - progress, 3); // cubic ease-out
+        
+        // Calcular posición actual
+        targetPlayer.x = pull.startX + (pull.endX - pull.startX) * easeProgress;
+        targetPlayer.y = pull.startY + (pull.endY - pull.startY) * easeProgress;
+        
+        // Actualizar targetX/targetY para interpolación del cliente
+        targetPlayer.targetX = targetPlayer.x;
+        targetPlayer.targetY = targetPlayer.y;
+        
+        // Si completó la animación, remover y desbloquear movimiento
+        if (progress >= 1) {
+          targetPlayer.beingPulled = false;
+          hookPullsPorSala[sala.id].splice(i, 1);
+        }
+      }
+    }
+    
     // Actualizar proyectiles y detectar colisiones
     for (let i = proyectiles.length - 1; i >= 0; i--) {
       const p = proyectiles[i];
@@ -1919,15 +2943,66 @@ setInterval(() => {
       }
       // Rebote en muros con colision:true
       const muros = murosPorSala[sala.id] || [];
-      if (!reboteado) {
+      // Skyfall projectiles ignore walls - they fall from above
+      const isSkyfall = mejoraProyectil && mejoraProyectil.skyfall === true;
+      if (!reboteado && !isSkyfall) {
         for (const muro of muros) {
-          if (!muro.colision) continue;
+          if (muro.colision === false) continue;
           
           let colisionDetectada = false;
           let globalNormX = 0, globalNormY = 0;
           
-          // 🪨 Si el muro tiene forma rectangular (como muro_roca)
-          if ((muro.imagen || muro.tipo === 'muro_roca') && muro.forma === 'rectangular') {
+          // 🎯 PRIORIDAD 1: Bloques del mapa con shape definido (rect, circle, triangle)
+          if (muro.shape === 'rect' || muro.shape === 'triangle') {
+            // Colisión rectangular/triangular con rotación (AABB rotado)
+            const cos = Math.cos(-muro.angle);
+            const sin = Math.sin(-muro.angle);
+            const relX = p.x - muro.x;
+            const relY = p.y - muro.y;
+            const localX = relX * cos - relY * sin;
+            const localY = relX * sin + relY * cos;
+            
+            const halfWidth = (muro.width / 2) + (p.radius || 16);
+            const halfHeight = (muro.height / 2) + (p.radius || 16);
+            
+            if (Math.abs(localX) <= halfWidth && Math.abs(localY) <= halfHeight) {
+              colisionDetectada = true;
+              
+              // Calcular normal basada en el lado más cercano del rectángulo
+              let normX = 0, normY = 0;
+              const distLeft = halfWidth + localX;
+              const distRight = halfWidth - localX;
+              const distTop = halfHeight + localY;
+              const distBottom = halfHeight - localY;
+              
+              const minDist = Math.min(distLeft, distRight, distTop, distBottom);
+              if (minDist === distLeft) normX = -1;
+              else if (minDist === distRight) normX = 1;
+              else if (minDist === distTop) normY = -1;
+              else if (minDist === distBottom) normY = 1;
+              
+              // Transformar la normal de vuelta al sistema global
+              const cosR = Math.cos(muro.angle);
+              const sinR = Math.sin(muro.angle);
+              globalNormX = normX * cosR - normY * sinR;
+              globalNormY = normX * sinR + normY * cosR;
+            }
+          } else if (muro.shape === 'circle') {
+            // Colisión circular
+            const dx = p.x - muro.x;
+            const dy = p.y - muro.y;
+            const dist = Math.sqrt(dx * dx + dy * dy);
+            const radius = (muro.width / 2) + (p.radius || 16);
+            
+            if (dist <= radius) {
+              colisionDetectada = true;
+              // Normal apunta desde el centro del círculo hacia el proyectil
+              globalNormX = dx / dist;
+              globalNormY = dy / dist;
+            }
+          }
+          // 🎯 PRIORIDAD 2: Muros con imagen (como muro_roca)
+          else if ((muro.imagen || muro.tipo === 'muro_roca') && muro.forma === 'rectangular') {
             // Colisión rectangular con rotación (AABB rotado)
             const cos = Math.cos(-muro.angle);
             const sin = Math.sin(-muro.angle);
@@ -1961,10 +3036,12 @@ setInterval(() => {
               globalNormX = normX * cosR - normY * sinR;
               globalNormY = normX * sinR + normY * cosR;
             }
-          } else {
-            // Colisión ovalada para otros muros
+          } 
+          // 🎯 PRIORIDAD 3: Muros ovalados (muro de piedra con width/height)
+          else if (muro.width && muro.height) {
+            // Colisión ovalada para muros de habilidad (como muro de piedra)
             const mejoraMuro = MEJORAS.find(m => m.id === muro.id);
-            if (!mejoraMuro || !mejoraMuro.colision) continue;
+            if (!mejoraMuro || mejoraMuro.colision === false) continue;
             
             // Transformar la posición del proyectil al sistema local del muro
             const cos = Math.cos(-muro.angle);
@@ -2030,6 +3107,54 @@ setInterval(() => {
             } else {
               // Sin rebotes restantes o no tiene rebote - destruir proyectil
               const mejora = MEJORAS.find(m => m.id === p.mejoraId);
+              
+              // 🪝 GANCHO: Si impacta un muro, jalar al dueño hacia el muro
+              if (p.mejoraId === 'gancho') {
+                const hookOwner = sala.players.find(pl => pl.nick === p.owner);
+                if (hookOwner) {
+                  // Calcular punto de impacto (posición actual del gancho)
+                  const hookX = p.x;
+                  const hookY = p.y;
+                  
+                  // Calcular distancia al muro
+                  const pullDx = hookX - hookOwner.x;
+                  const pullDy = hookY - hookOwner.y;
+                  const pullDist = Math.sqrt(pullDx * pullDx + pullDy * pullDy);
+                  
+                  if (pullDist > 50) { // Solo jalar si está a más de 50px
+                    const pullAngle = Math.atan2(pullDy, pullDx);
+                    
+                    // Calcular posición final (dejar 50px de distancia del muro)
+                    const finalX = hookX - Math.cos(pullAngle) * 50;
+                    const finalY = hookY - Math.sin(pullAngle) * 50;
+                    
+                    // Iniciar jalado gradual del dueño hacia el muro
+                    if (!hookPullsPorSala[sala.id]) hookPullsPorSala[sala.id] = [];
+                    
+                    hookPullsPorSala[sala.id].push({
+                      targetNick: hookOwner.nick,
+                      startX: hookOwner.x,
+                      startY: hookOwner.y,
+                      endX: finalX,
+                      endY: finalY,
+                      startTime: Date.now(),
+                      duration: 400, // 400ms de animación
+                      pullSpeed: mejora.effect.pullSpeed || 25
+                    });
+                  }
+                  
+                  // Reducir cooldown del gancho en 50%
+                  const cdReduction = mejora.effect.cdReduction || 0.5;
+                  io.to(sala.id).emit('hookHit', {
+                    owner: p.owner,
+                    cdReduction: cdReduction,
+                    hitType: 'wall'
+                  });
+                }
+                destroy = true;
+                break;
+              }
+              
               if (p.mejoraId === 'meteoro') {
                 p.hasHit = true;
                 handleExplosion(sala, p, io);
@@ -2155,6 +3280,55 @@ setInterval(() => {
         // Para skyfall, no aplicar daño en colisión, solo al llegar al suelo
         const mejora = MEJORAS.find(m => m.id === p.mejoraId);
         if (mejora && mejora.skyfall) continue;
+        
+        // 🪝 GANCHO: Lógica especial de jalado
+        if (p.mejoraId === 'gancho') {
+          const dx = jugador.x - p.x;
+          const dy = jugador.y - p.y;
+          const dist = Math.sqrt(dx*dx + dy*dy);
+          if (dist < 32 + p.radius) { // radio jugador + radio gancho
+            // Encontrar al jugador que lanzó el gancho
+            const hookOwner = sala.players.find(pl => pl.nick === p.owner);
+            if (hookOwner) {
+              // Aplicar daño
+              const damage = getDanioMejora(p.mejoraId, p.owner, sala);
+              jugador.lastAttacker = p.owner;
+              applyDamage(jugador, damage, io, sala.id, 'hit');
+              
+              // Iniciar jalado gradual del enemigo hacia el dueño del gancho
+              if (!hookPullsPorSala[sala.id]) hookPullsPorSala[sala.id] = [];
+              
+              hookPullsPorSala[sala.id].push({
+                targetNick: jugador.nick,
+                startX: jugador.x,
+                startY: jugador.y,
+                endX: hookOwner.x,
+                endY: hookOwner.y,
+                startTime: Date.now(),
+                duration: 400, // 400ms de animación
+                pullSpeed: mejora.effect.pullSpeed || 25
+              });
+              
+              // Aplicar slow
+              const slowAmount = mejora.effect.slowAmount || 0.25;
+              const slowDuration = mejora.effect.slowDuration || 1500;
+              jugador.slowUntil = now + slowDuration;
+              jugador.speed = DEFAULT_SPEED * (1 - slowAmount);
+              
+              // Reducir cooldown del gancho en 50%
+              const cdReduction = mejora.effect.cdReduction || 0.5;
+              io.to(sala.id).emit('hookHit', {
+                owner: p.owner,
+                cdReduction: cdReduction,
+                hitType: 'player'
+              });
+            }
+            proyectiles.splice(i, 1);
+            break;
+          }
+          continue; // Continuar con siguiente jugador
+        }
+        
         // Distancia al centro del jugador (radio 32)
         const dx = jugador.x - p.x;
         const dy = jugador.y - p.y;
@@ -2294,6 +3468,11 @@ setInterval(() => {
         jugador.speed = DEFAULT_SPEED;
         jugador.speedBoostUntil = 0;
       }
+      // Verificar expiración de invisibilidad
+      if (jugador.invisibleUntil && now > jugador.invisibleUntil) {
+        jugador.invisible = false;
+        jugador.invisibleUntil = 0;
+      }
       // Check muddy grounds for slow
       let inMuddy = false;
       if (muddyGroundsPorSala[sala.id]) {
@@ -2347,8 +3526,14 @@ setInterval(() => {
         const dist = Math.sqrt(dx * dx + dy * dy);
         if (dist < 25) { // Área de destino grande para evitar tambaleo
           player.isDashing = false;
-          // Verificar colisiones finales si no hit
-          if (!player.dashHit) {
+          // Emitir evento de dash completado para sincronización instantánea
+          io.to(sala.id).emit('playerDashCompleted', {
+            nick: player.nick,
+            x: player.x,
+            y: player.y
+          });
+          // Verificar colisiones finales si no hit (solo para embestida, no para salto_sombrio)
+          if (!player.dashHit && player.dashMejoraId !== 'salto_sombrio') {
             const collisionRadius = 60;
             for (const enemy of jugadores) {
               if (enemy === player || enemy.defeated) continue;
@@ -2377,8 +3562,16 @@ setInterval(() => {
           const ang = Math.atan2(dy, dx);
           player.x += Math.cos(ang) * player.dashSpeed;
           player.y += Math.sin(ang) * player.dashSpeed;
-          // Verificar colisiones durante el movimiento
-          if (!player.dashHit) {
+          
+          // Emitir posición actual durante el dash para sincronización en tiempo real
+          io.to(sala.id).emit('playerDashing', {
+            nick: player.nick,
+            x: player.x,
+            y: player.y
+          });
+          
+          // Verificar colisiones durante el movimiento (solo para embestida, no para salto_sombrio)
+          if (!player.dashHit && player.dashMejoraId !== 'salto_sombrio') {
             for (const enemy of jugadores) {
               if (enemy === player || enemy.defeated) continue;
               const ex = enemy.x - player.x;
@@ -2386,7 +3579,11 @@ setInterval(() => {
               const edist = Math.sqrt(ex * ex + ey * ey);
               if (edist < 40) { // collision radius
                 enemy.lastAttacker = player.nick;
-                applyDamage(enemy, 20, io, sala.id, 'embestida');
+                
+                // Solo embestida hace daño (25)
+                applyDamage(enemy, 25, io, sala.id, 'embestida');
+                
+                // Empujar al enemigo
                 const pushDist = 100;
                 const pushX = ex / edist * pushDist;
                 const pushY = ey / edist * pushDist;
@@ -2401,36 +3598,24 @@ setInterval(() => {
               }
             }
           }
-          // Verificar colisión con muros
-          const muros = murosPorSala[sala.id] || [];
-          for (const muro of muros) {
-            if (muro.width && muro.height && typeof muro.angle === 'number') {
-              const cos = Math.cos(-muro.angle);
-              const sin = Math.sin(-muro.angle);
-              const relX = player.x - muro.x;
-              const relY = player.y - muro.y;
-              const localX = relX * cos - relY * sin;
-              const localY = relX * sin + relY * cos;
-              const rx = muro.width + 32; // radio aproximado del player
-              const ry = muro.height + 32;
-              if ((localX * localX) / (rx * rx) + (localY * localY) / (ry * ry) <= 1) {
-                // Colisiona, detener dash y rebotar hacia atrás
-                player.isDashing = false;
-                // Calcular dirección opuesta al dash
-                const ang = Math.atan2(dy, dx);
-                const reboundAng = ang + Math.PI;
-                const reboundDist = 60;
-                const reboundX = Math.cos(reboundAng) * reboundDist;
-                const reboundY = Math.sin(reboundAng) * reboundDist;
-                if (!player.isPushed) {
-                  player.isPushed = true;
-                  player.pushTargetX = player.x + reboundX;
-                  player.pushTargetY = player.y + reboundY;
-                  player.pushSpeed = 12; // Velocidad de rebote fluida
-                }
-                break;
-              }
-            }
+          // Verificar colisión con muros usando checkCollision más preciso
+          const collision = checkCollision(player.x, player.y, sala);
+          if (collision) {
+            // Colisión detectada, detener el dash sin rebote
+            player.isDashing = false;
+            
+            // Retroceder ligeramente en la dirección opuesta para salir de la colisión
+            const ang = Math.atan2(dy, dx);
+            const retreatDist = 5; // Pequeño retroceso para salir del muro
+            player.x -= Math.cos(ang) * retreatDist;
+            player.y -= Math.sin(ang) * retreatDist;
+            
+            // Emitir evento de dash completado (por colisión con muro)
+            io.to(sala.id).emit('playerDashCompleted', {
+              nick: player.nick,
+              x: player.x,
+              y: player.y
+            });
           }
         }
       }
@@ -2456,9 +3641,15 @@ setInterval(() => {
     if (muddyGroundsPorSala[sala.id]) {
       muddyGroundsPorSala[sala.id] = muddyGroundsPorSala[sala.id].filter(muddy => now - muddy.createdAt < muddy.duration);
     }
-    // Remove expired walls
+    // Remove expired walls (pero NUNCA borrar muros del mapa)
     if (murosPorSala[sala.id]) {
-      murosPorSala[sala.id] = murosPorSala[sala.id].filter(muro => now - muro.creado < muro.duracion);
+      murosPorSala[sala.id] = murosPorSala[sala.id].filter(muro => {
+        // Mantener SIEMPRE muros del mapa
+        if (muro.muroMapa === true) return true;
+        // Para otros muros, verificar duración
+        if (!muro.creado) return false; // Sin timestamp = borrar
+        return now - muro.creado < muro.duracion;
+      });
     }
     // Verificar si solo queda 1 jugador vivo (no derrotado)
     const vivos = jugadores.filter(j => !j.defeated);
@@ -2474,26 +3665,16 @@ setInterval(() => {
       // Limpiar casts y suelos fangosos
       if (castsPorSala[sala.id]) castsPorSala[sala.id] = [];
       if (muddyGroundsPorSala[sala.id]) muddyGroundsPorSala[sala.id] = [];
-      if (murosPorSala[sala.id]) murosPorSala[sala.id] = [];
-      // Reposicionar jugadores (igual que al iniciar partida)
-      const offset = 200;
-      jugadores.forEach((player, i) => {
-        if (i === 0) { // esquina arriba-izquierda
-          player.x = offset;
-          player.y = offset;
-        } else if (i === 1) { // esquina arriba-derecha
-          player.x = 2500 - offset;
-          player.y = offset;
-        } else if (i === 2) { // esquina abajo-izquierda
-          player.x = offset;
-          player.y = 1500 - offset;
-        } else if (i === 3) { // esquina abajo-derecha
-          player.x = 2500 - offset;
-          player.y = 1500 - offset;
-        } else {
-          player.x = 1250;
-          player.y = 750;
-        }
+      // 🗺️ Limpiar solo muros temporales, mantener bloques permanentes del mapa
+      if (murosPorSala[sala.id]) {
+        const bloquesMapa = murosPorSala[sala.id].filter(m => m.muroMapa === true);
+        murosPorSala[sala.id] = bloquesMapa;
+        console.log(`🗺️ RoundEnded: Mantenidos ${bloquesMapa.length} bloques permanentes del mapa`);
+      }
+      if (tornadosPorSala[sala.id]) tornadosPorSala[sala.id] = [];
+      
+      // Resetear estados de jugadores (pero NO la posición aún)
+      jugadores.forEach((player) => {
         player.speed = DEFAULT_SPEED;
         player.slowUntil = 0;
         player.speedBoostUntil = 0;
@@ -2556,7 +3737,36 @@ setInterval(() => {
         io.to(sala.id).emit('gameEnded', { stats: finalStats, winner: winnerNick });
       } else {
         // 🎮 Generar NUEVO escenario para la nueva ronda
-        crearEscenarioBatalla(sala.id, sala.round);
+        await crearEscenarioBatalla(sala.id, sala.round);
+        
+        // 🎯 Reposicionar jugadores usando spawns del mapa
+        const mapSpawns = global.mapSpawns && global.mapSpawns[sala.id];
+        jugadores.forEach((player, i) => {
+          if (mapSpawns && mapSpawns[i]) {
+            // Usar spawn del mapa
+            player.x = mapSpawns[i].x;
+            player.y = mapSpawns[i].y;
+          } else {
+            // Usar posiciones por defecto en esquinas
+            const offset = 200;
+            if (i === 0) { // esquina arriba-izquierda
+              player.x = offset;
+              player.y = offset;
+            } else if (i === 1) { // esquina arriba-derecha
+              player.x = 2500 - offset;
+              player.y = offset;
+            } else if (i === 2) { // esquina abajo-izquierda
+              player.x = offset;
+              player.y = 1500 - offset;
+            } else if (i === 3) { // esquina abajo-derecha
+              player.x = 2500 - offset;
+              player.y = 1500 - offset;
+            } else {
+              player.x = 1250;
+              player.y = 750;
+            }
+          }
+        });
         
         // Emitir evento de inicio de ronda
         io.to(sala.id).emit('roundStarted', { round: sala.round });
@@ -2568,8 +3778,20 @@ setInterval(() => {
           io.to(sala.id).emit('escenarioMuros', murosPorSala[sala.id]);
         }
         
-        // De la ronda 2 a la 7, mostrar solo aumentos
-        if (sala.round >= 2 && sala.round <= 7) {
+        // 🆕 Ronda 4: Habilidades F (proyectilF)
+        if (sala.round === 4) {
+          const habilidadesF = MEJORAS.filter(m => m.proyectilF);
+          function shuffle(array) {
+            return array.sort(() => Math.random() - 0.5);
+          }
+          for (const player of sala.players) {
+            // Ofrecer 3 habilidades F aleatorias (o todas si hay menos de 3)
+            const selectedUpgrades = shuffle([...habilidadesF]).slice(0, 3);
+            io.to(sala.id).emit('availableUpgrades', { nick: player.nick, upgrades: selectedUpgrades });
+          }
+        }
+        // De la ronda 2, 3, 5, 6 y 7: mostrar solo aumentos
+        else if ((sala.round >= 2 && sala.round <= 3) || (sala.round >= 5 && sala.round <= 7)) {
           const aumentoMejoras = MEJORAS.filter(m => m.aumento);
           function shuffle(array) {
             return array.sort(() => Math.random() - 0.5);
@@ -2591,7 +3813,10 @@ setInterval(() => {
     }
     // Enviar estado a todos los jugadores de la sala
     io.to(sala.id).emit('proyectilesUpdate', proyectiles);
-    io.to(sala.id).emit('wallsUpdate', murosPorSala[sala.id] || []);
+    // ✅ IMPORTANTE: wallsUpdate solo debe enviar muros TEMPORALES (de habilidades)
+    // Los muros del mapa ya fueron enviados una vez con escenarioMuros
+    const murosTemporales = (murosPorSala[sala.id] || []).filter(m => m.muroMapa !== true);
+    io.to(sala.id).emit('wallsUpdate', murosTemporales);
     io.to(sala.id).emit('playersUpdate', jugadores);
     proyectilesPorSala[sala.id] = proyectiles;
   }

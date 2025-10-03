@@ -217,6 +217,12 @@ logoutBtn.addEventListener('click', () => {
   window.location.href = 'index.html';
 });
 
+// 🔧 Botón DEV MODE - Editor de Mapas
+const devEditorBtn = document.getElementById('devEditorBtn');
+devEditorBtn.addEventListener('click', () => {
+  window.location.href = 'editor.html';
+});
+
 // ============================================
 // TIENDA - La lógica está en tienda.js
 // ============================================

@@ -1512,6 +1512,84 @@ h1 {
   background: linear-gradient(135deg, rgba(248, 113, 113, 0.1), rgba(239, 68, 68, 0.1));
 }
 
+/* Botón DEV MODE - Editor de Mapas */
+.dev-editor-btn {
+  background: linear-gradient(135deg, rgba(255, 152, 0, 0.1), rgba(255, 87, 34, 0.1));
+  border: 2px solid rgba(255, 152, 0, 0.3);
+  animation: devPulse 2s ease-in-out infinite;
+}
+
+.dev-editor-btn .btn-icon {
+  background: linear-gradient(135deg, #ff9800, #ff5722);
+  box-shadow: 0 0 20px rgba(255, 152, 0, 0.5);
+}
+
+.dev-editor-btn:hover {
+  background: linear-gradient(135deg, rgba(255, 152, 0, 0.2), rgba(255, 87, 34, 0.2));
+  border-color: rgba(255, 152, 0, 0.6);
+  transform: translateY(-4px);
+}
+
+@keyframes devPulse {
+  0%, 100% {
+    box-shadow: 0 0 20px rgba(255, 152, 0, 0.2);
+  }
+  50% {
+    box-shadow: 0 0 30px rgba(255, 152, 0, 0.4);
+  }
+}
+
+/* 🔧 Botón DEV MODE */
+.dev-editor-btn {
+  color: #ff9800;
+  border: 2px dashed rgba(255, 152, 0, 0.3) !important;
+  background: linear-gradient(135deg, rgba(255, 152, 0, 0.05), rgba(255, 87, 34, 0.05)) !important;
+}
+
+.dev-editor-btn .btn-icon {
+  background: linear-gradient(135deg, #ff9800, #ff5722);
+}
+
+.dev-editor-btn:hover {
+  background: linear-gradient(135deg, rgba(255, 152, 0, 0.15), rgba(255, 87, 34, 0.15)) !important;
+  border-color: rgba(255, 152, 0, 0.6) !important;
+}
+
+/* Botón DEV MODE - Editor de Mapas */
+.dev-editor-btn {
+  color: #ff9800;
+  border: 2px dashed rgba(255, 152, 0, 0.3);
+  position: relative;
+  overflow: hidden;
+}
+
+.dev-editor-btn::before {
+  content: '';
+  position: absolute;
+  top: -2px;
+  left: -100%;
+  width: 100%;
+  height: calc(100% + 4px);
+  background: linear-gradient(90deg, transparent, rgba(255, 152, 0, 0.3), transparent);
+  animation: shimmer 3s infinite;
+}
+
+@keyframes shimmer {
+  to {
+    left: 100%;
+  }
+}
+
+.dev-editor-btn .btn-icon {
+  background: linear-gradient(135deg, #ff9800, #ff5722);
+}
+
+.dev-editor-btn:hover {
+  background: linear-gradient(135deg, rgba(255, 152, 0, 0.15), rgba(255, 87, 34, 0.15));
+  border-color: rgba(255, 152, 0, 0.5);
+  transform: translateY(-4px);
+}
+
 /* ============================================
    MODAL DE ESTADÍSTICAS
    ============================================ */

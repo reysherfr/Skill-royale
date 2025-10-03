@@ -71,6 +71,7 @@ document.getElementById('registerForm').addEventListener('submit', async functio
     const data = await res.json();
     
     if (data.success) {
+      soundManager.playSuccess(); // Sonido de éxito
       msg.className = 'auth-msg success';
       msg.textContent = '✓ ¡Registro exitoso! Ahora puedes iniciar sesión';
       document.getElementById('registerForm').reset();
@@ -81,6 +82,7 @@ document.getElementById('registerForm').addEventListener('submit', async functio
         msg.textContent = '';
       }, 1500);
     } else {
+      soundManager.playError(); // Sonido de error
       msg.className = 'auth-msg error';
       msg.textContent = data.error || '✗ Error en el registro';
     }
@@ -110,6 +112,7 @@ document.getElementById('loginForm').addEventListener('submit', async function(e
     const data = await res.json();
     
     if (data.success) {
+      soundManager.playSuccess(); // Sonido de éxito
       msg.className = 'auth-msg success';
       msg.textContent = '✓ ¡Bienvenido de nuevo!';
       
@@ -121,10 +124,12 @@ document.getElementById('loginForm').addEventListener('submit', async function(e
         window.location.href = 'menu.html';
       }, 500);
     } else {
+      soundManager.playError(); // Sonido de error
       msg.className = 'auth-msg error';
       msg.textContent = data.error || '✗ Credenciales incorrectas';
     }
   } catch (err) {
+    soundManager.playError(); // Sonido de error
     msg.className = 'auth-msg error';
     msg.textContent = '✗ No se pudo conectar al servidor';
   }

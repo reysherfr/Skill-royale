@@ -183,6 +183,22 @@
         </div>
         <div class="btn-arrow">→</div>
       </button>
+
+      <!-- 🔧 BOTÓN DEV MODE - SOLO PARA DESARROLLO -->
+      <button id="devEditorBtn" class="action-btn dev-editor-btn">
+        <div class="btn-icon">
+          <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <polygon points="12 2 2 7 12 12 22 7 12 2"></polygon>
+            <polyline points="2 17 12 22 22 17"></polyline>
+            <polyline points="2 12 12 17 22 12"></polyline>
+          </svg>
+        </div>
+        <div class="btn-content">
+          <span class="btn-title">🔧 EDITOR DE MAPAS</span>
+          <span class="btn-subtitle">Modo desarrollador</span>
+        </div>
+        <div class="btn-arrow">→</div>
+      </button>
     </div>
   </div>
 
@@ -358,6 +374,7 @@
   </div>
 
   <script src="/socket.io/socket.io.js"></script>
+  <script src="soundManager.js"></script>
   <script src="tienda.js"></script>
   <script src="menu.js"></script>
 </body>

@@ -206,7 +206,19 @@ function setupEventListeners(shopBtn, shopModalOverlay, closeShopModal, shopTabs
   // Cambiar entre tabs de categorías
   if (shopTabs) {
     shopTabs.forEach(tab => {
+      // Agregar sonido de hover a las tabs
+      tab.addEventListener('mouseenter', () => {
+        if (typeof soundManager !== 'undefined') {
+          soundManager.playHover();
+        }
+      });
+      
       tab.addEventListener('click', () => {
+        // Sonido de click en tab
+        if (typeof soundManager !== 'undefined') {
+          soundManager.playClick();
+        }
+        
         const category = tab.dataset.category;
         
         // Activar tab
@@ -224,6 +236,16 @@ function setupEventListeners(shopBtn, shopModalOverlay, closeShopModal, shopTabs
       });
     });
   }
+  
+  // Agregar sonidos de hover a todos los items de la tienda
+  const shopItems = document.querySelectorAll('.shop-item');
+  shopItems.forEach(item => {
+    item.addEventListener('mouseenter', () => {
+      if (typeof soundManager !== 'undefined') {
+        soundManager.playHover();
+      }
+    });
+  });
 }
 
 // Actualizar preview del personaje
@@ -310,6 +332,9 @@ function updateShopItems() {
       
       // Al hacer clic, desequipar el item
       btn.onclick = () => {
+        if (typeof soundManager !== 'undefined') {
+          soundManager.playClick();
+        }
         unequipItem(itemId);
       };
     } else if (isOwned) {
@@ -320,6 +345,9 @@ function updateShopItems() {
       
       // Al hacer clic, equipar el item
       btn.onclick = () => {
+        if (typeof soundManager !== 'undefined') {
+          soundManager.playClick();
+        }
         equipItem(itemId);
       };
     } else {
@@ -330,6 +358,9 @@ function updateShopItems() {
       
       // Al hacer clic, comprar el item
       btn.onclick = () => {
+        if (typeof soundManager !== 'undefined') {
+          soundManager.playClick();
+        }
         buyItem(itemId, price);
       };
     }
@@ -388,6 +419,9 @@ async function buyItem(itemId, price) {
   if (!user) return;
   
   if (user.gold < price) {
+    if (typeof soundManager !== 'undefined') {
+      soundManager.playError(); // Sonido de error - no tiene oro suficiente
+    }
     alert('¡No tienes suficiente oro!');
     return;
   }
@@ -430,6 +464,11 @@ async function buyItem(itemId, price) {
     console.error('Error al actualizar oro:', error);
   }
   
+  // Sonido de éxito al comprar
+  if (typeof soundManager !== 'undefined') {
+    soundManager.playSuccess();
+  }
+  
   alert('¡Compra exitosa!');
 }
 
@@ -451,6 +490,11 @@ function equipItem(itemId) {
   
   // Guardar en localStorage
   saveUser(user);
+  
+  // Sonido de equipar item
+  if (typeof soundManager !== 'undefined') {
+    soundManager.playCustom(880, 0.15, 'triangle', 0.3); // Sonido agradable de equipar
+  }
   
   // Actualizar preview y botones
   updateShopPreview();
@@ -477,6 +521,11 @@ function unequipItem(itemId) {
   
   // Guardar en localStorage
   saveUser(user);
+  
+  // Sonido de desequipar item
+  if (typeof soundManager !== 'undefined') {
+    soundManager.playCustom(440, 0.1, 'sine', 0.2); // Sonido más bajo para desequipar
+  }
   
   // Actualizar preview y botones
   updateShopPreview();
