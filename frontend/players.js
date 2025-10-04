@@ -20,9 +20,16 @@ export class Player {
 }
 
 export function createPlayersFromSala(sala, localNick) {
-  return sala.players.map(p => new Player({
-    ...p,
-    color: p.nick === localNick ? '#2a5298' : '#d32f2f',
-    isLocal: p.nick === localNick
-  }));
+  return sala.players.map(p => {
+    const player = new Player({
+      ...p,
+      color: p.nick === localNick ? '#2a5298' : '#d32f2f',
+      isLocal: p.nick === localNick
+    });
+    // Preservar equipped explícitamente
+    if (p.equipped) {
+      player.equipped = p.equipped;
+    }
+    return player;
+  });
 }

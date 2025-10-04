@@ -1,6 +1,3 @@
-// Determine server URL based on environment
-const SERVER_URL = window.location.hostname === 'localhost' ? 'http://localhost:3000' : 'http://138.68.250.124:3000';
-
 // Conectar a Socket.IO para rastrear jugadores en línea
 const socket = io(SERVER_URL);
 
@@ -257,23 +254,83 @@ devEditorBtn.addEventListener('click', () => {
 
 const hostBtn = document.getElementById('hostBtn');
 hostBtn.addEventListener('click', async () => {
-  try {
-  const res = await fetch(`${SERVER_URL}/create-room`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ nick: user.nick, nivel: user.nivel })
-    });
-    const data = await res.json();
-    if (data.success) {
-      localStorage.setItem('batlesd_room_id', data.sala.id);
-      window.location.href = 'room.html';
-    } else {
-      alert('Error al crear la sala: ' + (data.error || ''));
-    }
-  } catch (err) {
-    alert('No se pudo conectar al servidor.');
+  // Mostrar modal de configuración de sala
+  const roomConfigModal = document.getElementById('roomConfigModalOverlay');
+  if (roomConfigModal) {
+    roomConfigModal.classList.add('active');
   }
 });
+
+// Manejo del modal de configuración de sala
+const closeRoomConfigModal = document.getElementById('closeRoomConfigModal');
+const cancelRoomConfigBtn = document.getElementById('cancelRoomConfigBtn');
+const confirmRoomConfigBtn = document.getElementById('confirmRoomConfigBtn');
+const roomConfigModalOverlay = document.getElementById('roomConfigModalOverlay');
+
+// Verificar que los elementos existen
+if (!closeRoomConfigModal || !cancelRoomConfigBtn || !confirmRoomConfigBtn || !roomConfigModalOverlay) {
+  console.error('❌ Error: Elementos del modal de configuración no encontrados');
+  console.log('closeRoomConfigModal:', closeRoomConfigModal);
+  console.log('cancelRoomConfigBtn:', cancelRoomConfigBtn);
+  console.log('confirmRoomConfigBtn:', confirmRoomConfigBtn);
+  console.log('roomConfigModalOverlay:', roomConfigModalOverlay);
+}
+
+if (closeRoomConfigModal) {
+  closeRoomConfigModal.addEventListener('click', () => {
+    roomConfigModalOverlay.classList.remove('active');
+  });
+}
+
+if (cancelRoomConfigBtn) {
+  cancelRoomConfigBtn.addEventListener('click', () => {
+    roomConfigModalOverlay.classList.remove('active');
+  });
+}
+
+// Cerrar modal al hacer clic en el overlay (fuera del modal)
+if (roomConfigModalOverlay) {
+  roomConfigModalOverlay.addEventListener('click', (e) => {
+    if (e.target === roomConfigModalOverlay) {
+      roomConfigModalOverlay.classList.remove('active');
+    }
+  });
+}
+
+if (confirmRoomConfigBtn) {
+  confirmRoomConfigBtn.addEventListener('click', async () => {
+    const maxRounds = parseInt(document.getElementById('roundsSelect').value);
+    const gameMode = document.getElementById('gameModeSelect').value;
+    
+    console.log('🎮 Creando sala con', maxRounds, 'rondas, modo:', gameMode);
+    
+    try {
+      const res = await fetch(`${SERVER_URL}/create-room`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ 
+          nick: user.nick, 
+          nivel: user.nivel,
+          maxRounds: maxRounds,
+          gameMode: gameMode
+        })
+      });
+      const data = await res.json();
+      console.log('📡 Respuesta del servidor:', data);
+      
+      if (data.success) {
+        localStorage.setItem('batlesd_room_id', data.sala.id);
+        roomConfigModalOverlay.classList.remove('active');
+        window.location.href = 'room.html';
+      } else {
+        alert('Error al crear la sala: ' + (data.error || ''));
+      }
+    } catch (err) {
+      console.error('❌ Error al crear sala:', err);
+      alert('No se pudo conectar al servidor.');
+    }
+  });
+}
 
 // El botón join aún no tiene lógica
 const joinBtn = document.getElementById('joinBtn');
@@ -407,6 +464,17 @@ async function mostrarStats() {
     ctx.strokeStyle = '#fff';
     ctx.stroke();
     
+    // Dibujar rostro equipado si existe
+    if (user?.equipped?.face) {
+      const faceId = user.equipped.face;
+      const faceImg = new Image();
+      faceImg.onload = function() {
+        const faceSize = 100; // Tamaño del rostro en el modal de stats (proporcionalmente igual a la tienda)
+        ctx.drawImage(faceImg, 60 - faceSize/2, 65 - faceSize/2, faceSize, faceSize);
+      };
+      faceImg.src = `caras/${faceId.replace('face-', '')}.png`;
+    }
+    
     characterPreviewSection.appendChild(previewCanvas);
     
     statsModal.appendChild(characterPreviewSection);
@@ -428,10 +496,10 @@ async function mostrarStats() {
     // Calcular progreso de experiencia
     let exp = stats.exp || 0;
     let nivel = stats.nivel || 1;
-    const thresholds = [0, 200, 450, 800, 1450, 2350, 3400, 4900, 6400, 8800, 10500, 14500, 19100, 24700, 32500, 40000];
+    const thresholds = [0, 200, 450, 800, 1450, 2350, 3400, 4900, 6400, 8800, 10500, 14500, 19100, 24700, 32500, 40000,48650,58500,69500,82350,96550,113050];
     let expMin = thresholds[nivel - 1] || 0;
-    let expMax = thresholds[nivel] || 40000;
-    let progress = nivel >= 15 ? 100 : ((exp - expMin) / (expMax - expMin)) * 100;
+    let expMax = thresholds[nivel] || 113050;
+    let progress = nivel >= 21 ? 100 : ((exp - expMin) / (expMax - expMin)) * 100;
 
     const expBarContainer = document.createElement('div');
     expBarContainer.className = 'stats-exp-bar-container';
@@ -568,7 +636,7 @@ function cerrarStatsModal() {
 // ============================================
 function mostrarTodosLosRangos() {
   // Niveles de experiencia (del backend)
-  const thresholds = [0, 200, 450, 800, 1450, 2350, 3400, 4900, 6400, 8800, 10500, 14500, 19100, 24700, 32500, 40000];
+  const thresholds = [0, 200, 450, 800, 1450, 2350, 3400, 4900, 6400, 8800, 10500, 14500, 19100, 24700, 32500, 40000,48650,58500,69500,82350,96550,113050];
   
   // Crear overlay
   let ranksOverlay = document.getElementById('ranksOverlay');
@@ -658,13 +726,13 @@ function mostrarTodosLosRangos() {
 
       // Calcular experiencia necesaria
       let expNecesaria;
-      if (nivel <= 15) {
-        expNecesaria = thresholds[nivel] || 40000;
+      if (nivel <= 21) {
+        expNecesaria = thresholds[nivel] || 113050;
       } else {
-        // Para niveles 16-60, calcular progresión
-        const baseExp = 40000;
+        // Para niveles 22-60, calcular progresión
+        const baseExp = 113050;
         const incremento = 5000;
-        expNecesaria = baseExp + ((nivel - 15) * incremento);
+        expNecesaria = baseExp + ((nivel - 21) * incremento);
       }
 
       const rankExp = document.createElement('div');
@@ -820,6 +888,17 @@ async function mostrarStatsJugador(nick) {
   ctx.strokeStyle = '#fff';
   ctx.stroke();
   
+  // Dibujar rostro equipado si existe
+  if (stats.equipped && stats.equipped.face) {
+    const faceId = stats.equipped.face;
+    const faceImg = new Image();
+    faceImg.onload = function() {
+      const faceSize = 60; // Tamaño del rostro en el modal de stats (proporcionalmente igual a la tienda)
+      ctx.drawImage(faceImg, 60 - faceSize/2, 60 - faceSize/2, faceSize, faceSize);
+    };
+    faceImg.src = `caras/${faceId.replace('face-', '')}.png`;
+  }
+  
   characterPreviewSection.appendChild(previewCanvas);
   
   statsModal.appendChild(characterPreviewSection);
@@ -841,10 +920,10 @@ async function mostrarStatsJugador(nick) {
   // Calcular progreso de experiencia
   let exp = stats.exp || 0;
   let nivel = stats.nivel || 1;
-  const thresholds = [0, 200, 450, 800, 1450, 2350, 3400, 4900, 6400, 8800, 10500, 14500, 19100, 24700, 32500, 40000];
+  const thresholds = [0, 200, 450, 800, 1450, 2350, 3400, 4900, 6400, 8800, 10500, 14500, 19100, 24700, 32500, 40000, 48650, 58500, 69500, 82350, 96550, 113050];
   let expMin = thresholds[nivel - 1] || 0;
-  let expMax = thresholds[nivel] || 40000;
-  let progress = nivel >= 15 ? 100 : ((exp - expMin) / (expMax - expMin)) * 100;
+  let expMax = thresholds[nivel] || 113050;
+  let progress = nivel >= 21 ? 100 : ((exp - expMin) / (expMax - expMin)) * 100;
 
   const expBarContainer = document.createElement('div');
   expBarContainer.className = 'stats-exp-bar-container';

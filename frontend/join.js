@@ -1,5 +1,5 @@
 // Determine server URL based on environment
-const SERVER_URL = window.location.hostname === 'localhost' ? 'http://localhost:3000' : 'http://138.68.250.124:3000';
+// SERVER_URL se carga desde config.js
 
 // 🎵 Continuar música de fondo del menú
 const menuMusic = document.getElementById('menuMusic');
@@ -22,7 +22,7 @@ if (!user) {
 const roomsList = document.getElementById('roomsList');
 
 // Conectar Socket.IO
-const socket = io('http://localhost:3000');
+const socket = io(SERVER_URL);
 
 socket.on('roomsUpdated', () => {
   cargarSalas();
@@ -40,6 +40,12 @@ async function cargarSalas() {
         const roomCard = document.createElement('div');
         roomCard.className = 'room-item-card';
         
+        // Determinar el modo de juego
+        const modeIcon = sala.gameMode === 'teams' ? '⚔️' : '💀';
+        const modeText = sala.gameMode === 'teams' ? '2v2' : 'FFA';
+        const modeClass = sala.gameMode === 'teams' ? 'mode-teams' : 'mode-ffa';
+        const roundsText = sala.maxRounds || 7;
+        
         roomCard.innerHTML = `
           <div class="room-item-header">
             <div class="room-host-info">
@@ -55,6 +61,11 @@ async function cargarSalas() {
               <span class="players-icon">👥</span>
               <span class="players-number">${sala.players.length}/4</span>
             </div>
+          </div>
+          
+          <div class="room-game-info">
+            <span class="room-mode-badge ${modeClass}">${modeIcon} ${modeText}</span>
+            <span class="room-rounds-badge">🎯 ${roundsText} Rondas</span>
           </div>
           
           <div class="room-item-players">
@@ -91,7 +102,7 @@ async function cargarSalas() {
             const res = await fetch(`${SERVER_URL}/join-room`, {
               method: 'POST',
               headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({ id: roomId, nick: user.nick, nivel: user.nivel })
+              body: JSON.stringify({ id: roomId, nick: user.nick, nivel: user.nivel, equipped: user.equipped || {} })
             });
             const data = await res.json();
             if (data.success) {

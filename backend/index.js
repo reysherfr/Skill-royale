@@ -1,3 +1,4 @@
+// ...existing code...
 import express from 'express';
 import bodyParser from 'body-parser';
 import sqlite3 from 'sqlite3';
@@ -74,7 +75,25 @@ function getLevel(exp) {
   if (exp < 24700) return 13;
   if (exp < 32500) return 14;
   if (exp < 40000) return 15;
-  return 15; // or more
+  if (exp < 48650) return 16;
+  if (exp < 58500) return 17;
+  if (exp < 69500) return 18;
+  if (exp < 82350) return 19;
+  if (exp < 96550) return 20;
+  if (exp < 113050) return 21;
+  return 21; // or more
+}
+
+// 🤝 Función para verificar si dos jugadores son del mismo equipo
+function areSameTeam(player1, player2, sala) {
+  // Si no es modo teams, todos son enemigos
+  if (!sala || sala.gameMode !== 'teams') return false;
+  
+  // Si alguno no tiene equipo asignado, no son del mismo equipo
+  if (!player1 || !player2 || player1.team == null || player2.team == null) return false;
+  
+  // Son del mismo equipo si tienen el mismo número de equipo
+  return player1.team === player2.team;
 }
 
 const server = createServer(app);
@@ -97,6 +116,17 @@ let matchIdCounter = 0;
 const shootRateLimiter = new Map(); // { socketId: lastShootTime }
 
 io.on('connection', (socket) => {
+  // Sincronizar ángulo de mirada de los jugadores
+  socket.on('updateLookAngle', (data) => {
+    const { roomId, nick, lookAngle } = data;
+    const sala = salas.find(s => s.id === roomId && s.active);
+    if (!sala) return;
+    const player = sala.players.find(p => p.nick === nick);
+    if (!player) return;
+    player.lookAngle = lookAngle;
+    // Emitir actualización a todos los clientes
+    io.to(roomId).emit('playersUpdate', sala.players);
+  });
   console.log('Cliente conectado:', socket.id);
   
   // Evento para registrar jugador en el menú
@@ -247,12 +277,14 @@ io.on('connection', (socket) => {
     const playerColor = typeof data === 'object' ? data.color : null;
     const playerNick = typeof data === 'object' ? data.nick : null;
     const playerStats = typeof data === 'object' ? data.stats : null;
+    const playerEquipped = typeof data === 'object' ? data.equipped : null;
     
     console.log('🔵 [DEBUG] joinRoom evento recibido:', {
       roomId,
       playerNick,
       playerColor,
-      hasStats: !!playerStats
+      hasStats: !!playerStats,
+      hasEquipped: !!playerEquipped
     });
     
     socket.join(roomId);
@@ -271,7 +303,7 @@ io.on('connection', (socket) => {
         player = sala.players.find(p => p.socketId === socket.id);
       }
       
-      // Aplicar el color y stats si existen
+      // Aplicar el color, stats y equipped si existen
       if (player) {
         if (playerColor) {
           player.color = playerColor;
@@ -279,6 +311,10 @@ io.on('connection', (socket) => {
         // Guardar stats personalizadas del jugador
         if (playerStats) {
           player.customStats = playerStats; // Guardar stats calculadas desde el frontend
+        }
+        // Guardar items equipados (rostro, etc.)
+        if (playerEquipped) {
+          player.equipped = playerEquipped;
         }
       }
       
@@ -337,6 +373,20 @@ io.on('connection', (socket) => {
     if (!sala) return;
     if (sala.host.nick !== nick) return; // Solo el host puede iniciar
     if (sala.players.length < 2) return; // Necesita al menos 2 jugadores
+    
+    // 🎮 Validar que en modo equipos haya al menos un jugador en cada equipo
+    if (sala.gameMode === 'teams') {
+      const team1Count = sala.players.filter(p => p.team === 1).length;
+      const team2Count = sala.players.filter(p => p.team === 2).length;
+      
+      if (team1Count === 0 || team2Count === 0) {
+        // Enviar error al cliente
+        socket.emit('gameStartError', { 
+          error: 'No se puede iniciar el juego sin rivales. Debe haber al menos un jugador en cada equipo.' 
+        });
+        return;
+      }
+    }
     
     // 🎮 Crear escenario de batalla profesional
     await crearEscenarioBatalla(roomId);
@@ -1053,6 +1103,40 @@ io.on('connection', (socket) => {
           !(cast.position.x === data.x && cast.position.y === data.y && cast.player === data.owner)
         );
         io.to(data.roomId).emit('castEnded', { position: { x: data.x, y: data.y }, player: data.owner });
+      }
+      return; // No crear proyectil
+    }
+    if (mejora.id === 'arbusto_espinoso') {
+      console.log('🌿 Creando Arbusto Espinoso:', { x: data.targetX, y: data.targetY, radius: modifiedRadius, owner: data.owner });
+      if (!thornBushesPorSala[data.roomId]) thornBushesPorSala[data.roomId] = [];
+      thornBushesPorSala[data.roomId].push({
+        x: data.targetX,
+        y: data.targetY,
+        radius: modifiedRadius,
+        owner: data.owner,
+        createdAt: Date.now(),
+        duration: mejora.duracion,
+        damage: mejora.danio,
+        damageInterval: mejora.damageInterval,
+        slowAmount: mejora.slowAmount,
+        stackDamage: mejora.stackDamage,
+        stackDuration: mejora.stackDuration,
+        lastDamageTime: 0
+      });
+      io.to(data.roomId).emit('thornBushCreated', {
+        x: data.targetX,
+        y: data.targetY,
+        radius: modifiedRadius,
+        duration: mejora.duracion,
+        owner: data.owner
+      });
+      console.log('✅ Arbusto Espinoso emitido a sala:', data.roomId);
+      // Remover cast
+      if (castsPorSala[data.roomId]) {
+        castsPorSala[data.roomId] = castsPorSala[data.roomId].filter(cast =>
+          !(cast.position.x === data.targetX && cast.position.y === data.targetY && cast.player === data.owner)
+        );
+        io.to(data.roomId).emit('castEnded', { position: { x: data.targetX, y: data.targetY }, player: data.owner });
       }
       return; // No crear proyectil
     }
@@ -2030,9 +2114,11 @@ const muddyGroundsPorSala = {}; // Suelos fangosos por sala
 const ventiscasPorSala = {}; // Ventiscas activas por sala
 const murosPorSala = {}; // Muros de piedra por sala
 const sacredGroundsPorSala = {}; // Suelos sagrados por sala
+const thornBushesPorSala = {}; // Arbustos espinosos por sala
 const holyGroundsPorSala = {}; // Suelos sagrados por sala (alias)
 const tornadosPorSala = {}; // Tornados activos por sala
 const hookPullsPorSala = {}; // Jalados activos del gancho por sala
+const shadowCloudsPorSala = {}; // Nubes de oscuridad por sala (Fragmento de Sombra)
 // 🆕 Nuevas estructuras para habilidades
 const laseresContinuosPorSala = {}; // Láseres continuos activos
 const camposEspinasPorSala = {}; // Campos de espinas activos
@@ -2069,6 +2155,7 @@ async function crearEscenarioBatalla(roomId, roundNumber = 1) {
   if (muddyGroundsPorSala[roomId]) muddyGroundsPorSala[roomId] = [];
   if (ventiscasPorSala[roomId]) ventiscasPorSala[roomId] = []; // ❄️ Limpiar ventiscas
   if (holyGroundsPorSala[roomId]) holyGroundsPorSala[roomId] = [];
+  if (shadowCloudsPorSala[roomId]) shadowCloudsPorSala[roomId] = []; // 🌑 Limpiar nubes de sombra
   
   // Intentar cargar un mapa personalizado aleatorio
   const customMaps = await loadCustomMaps();
@@ -2600,9 +2687,12 @@ function handleExplosion(sala, proyectil, io) {
     }
   }
 
-  // Aplicar daño y pasiva a todos los jugadores en el radio, excepto el owner
+  // Aplicar daño y pasiva a todos los jugadores en el radio, excepto el owner y compañeros de equipo
   for (const jugador of sala.players) {
     if (jugador.nick === proyectil.owner || jugador.defeated) continue;
+    
+    // 🤝 No dañar a compañeros de equipo
+    if (areSameTeam(player, jugador, sala)) continue;
 
     const dx = jugador.x - proyectil.x;
     const dy = jugador.y - proyectil.y;
@@ -2659,9 +2749,14 @@ function handleExplosion(sala, proyectil, io) {
             });
           } else if (mejora.onHit.type === 'damageStack') {
             if (typeof portador.electricDamageBonus !== 'number') portador.electricDamageBonus = 0;
-            // Por cada jugador dañado por la explosión, aumentar el daño Y el daño de la explosión para el siguiente jugador
-            portador.electricDamageBonus += mejora.onHit.amount;
-            explosionDamage += mejora.onHit.amount;
+            // Verificar límite de stacks
+            const maxStacks = mejora.onHit.maxStacks || Infinity;
+            const currentStacks = portador.electricDamageBonus / mejora.onHit.amount;
+            if (currentStacks < maxStacks) {
+              // Por cada jugador dañado por la explosión, aumentar el daño Y el daño de la explosión para el siguiente jugador
+              portador.electricDamageBonus += mejora.onHit.amount;
+              explosionDamage += mejora.onHit.amount;
+            }
             io.to(sala.id).emit('electricDamageUpdate', {
               nick: portador.nick,
               electricDamageBonus: portador.electricDamageBonus
@@ -2749,19 +2844,38 @@ setInterval(async () => {
       if (sacredGroundsPorSala[sala.id]) {
         for (const ground of sacredGroundsPorSala[sala.id]) {
           if (now - ground.createdAt > ground.duration) continue; // expirado
-          // Solo cura al invocador
-          const jugador = jugadores.find(j => j.nick === ground.owner);
-          if (!jugador || jugador.defeated) continue;
-          const dx = jugador.x - ground.x;
-          const dy = jugador.y - ground.y;
-          const dist = Math.sqrt(dx*dx + dy*dy);
-          if (dist <= ground.radius + 32) {
-            // Curar cada segundo
-            if (!ground.lastHealTime || now - ground.lastHealTime >= ground.healInterval) {
-              jugador.health = Math.min(200, jugador.health + ground.healAmount);
-              ground.lastHealTime = now;
-              io.to(sala.id).emit('healEvent', { target: jugador.nick, amount: ground.healAmount, type: 'suelo_sagrado' });
+          
+          // Encontrar al invocador para verificar el equipo
+          const invocador = jugadores.find(j => j.nick === ground.owner);
+          if (!invocador) continue;
+          
+          // Curar a todos los jugadores aliados (mismo equipo) o al invocador si es FFA
+          for (const jugador of jugadores) {
+            if (jugador.defeated) continue;
+            
+            // En modo equipos, curar solo a aliados. En FFA, curar solo al invocador
+            const puedenCurar = sala.gameMode === 'teams' 
+              ? areSameTeam(invocador, jugador, sala)
+              : jugador.nick === ground.owner;
+            
+            if (!puedenCurar) continue;
+            
+            const dx = jugador.x - ground.x;
+            const dy = jugador.y - ground.y;
+            const dist = Math.sqrt(dx*dx + dy*dy);
+            if (dist <= ground.radius + 32) {
+              // Curar cada segundo
+              if (!ground.lastHealTime || now - ground.lastHealTime >= ground.healInterval) {
+                const maxHealth = jugador.maxHealth || 200;
+                jugador.health = Math.min(maxHealth, jugador.health + ground.healAmount);
+                io.to(sala.id).emit('healEvent', { target: jugador.nick, amount: ground.healAmount, type: 'suelo_sagrado' });
+              }
             }
+          }
+          
+          // Actualizar lastHealTime después de curar a todos
+          if (!ground.lastHealTime || now - ground.lastHealTime >= ground.healInterval) {
+            ground.lastHealTime = now;
           }
         }
         // Remover suelos expirados
@@ -3135,8 +3249,8 @@ setInterval(async () => {
             const localX = relX * cos - relY * sin;
             const localY = relX * sin + relY * cos;
             
-            const halfWidth = (muro.width / 2) + (p.radius || 16);
-            const halfHeight = (muro.height / 2) + (p.radius || 16);
+            const halfWidth = (muro.width / 2);
+            const halfHeight = (muro.height / 2);
             
             if (Math.abs(localX) <= halfWidth && Math.abs(localY) <= halfHeight) {
               colisionDetectada = true;
@@ -3165,7 +3279,7 @@ setInterval(async () => {
             const dx = p.x - muro.x;
             const dy = p.y - muro.y;
             const dist = Math.sqrt(dx * dx + dy * dy);
-            const radius = (muro.width / 2) + (p.radius || 16);
+            const radius = (muro.width / 2);
             
             if (dist <= radius) {
               colisionDetectada = true;
@@ -3184,8 +3298,8 @@ setInterval(async () => {
             const localX = relX * cos - relY * sin;
             const localY = relX * sin + relY * cos;
             
-            const halfWidth = muro.width + (p.radius || 16);
-            const halfHeight = muro.height + (p.radius || 16);
+            const halfWidth = muro.width;
+            const halfHeight = muro.height;
             
             if (Math.abs(localX) <= halfWidth && Math.abs(localY) <= halfHeight) {
               colisionDetectada = true;
@@ -3223,8 +3337,8 @@ setInterval(async () => {
             const relY = p.y - muro.y;
             const localX = relX * cos - relY * sin;
             const localY = relX * sin + relY * cos;
-            const rx = muro.width + (p.radius || 16);
-            const ry = muro.height + (p.radius || 16);
+            const rx = muro.width;
+            const ry = muro.height;
             
             // Verificar colisión con el óvalo
             const distanceSquared = (localX * localX) / (rx * rx) + (localY * localY) / (ry * ry);
@@ -3336,6 +3450,33 @@ setInterval(async () => {
                 destroy = true;
                 break;
               }
+              // 🌑 Fragmento de Sombra: crear nube al impactar muro
+              if (p.mejoraId === 'fragmento_sombra') {
+                const mejora = MEJORAS.find(m => m.id === 'fragmento_sombra');
+                if (mejora && mejora.effect) {
+                  if (!shadowCloudsPorSala[sala.id]) shadowCloudsPorSala[sala.id] = [];
+                  
+                  shadowCloudsPorSala[sala.id].push({
+                    x: p.x,
+                    y: p.y,
+                    radius: mejora.effect.cloudRadius || 90,
+                    owner: p.owner,
+                    createdAt: now,
+                    duration: mejora.effect.cloudDuration || 2500,
+                    speedBoost: mejora.effect.speedBoost || 1.05,
+                    darknessAmount: mejora.effect.darknessAmount || 0.6
+                  });
+                  
+                  // Emitir evento de creación de nube de sombra al cliente
+                  io.to(sala.id).emit('shadowCloudCreated', {
+                    x: p.x,
+                    y: p.y,
+                    radius: mejora.effect.cloudRadius || 90,
+                    duration: mejora.effect.cloudDuration || 2500,
+                    owner: p.owner
+                  });
+                }
+              }
               destroy = true;
               break;
             }
@@ -3361,8 +3502,13 @@ setInterval(async () => {
             const skyfallRadius = p.radius; // Usar el radio agrandado del proyectil
             
             // Aplicar daño de impacto directo
+            const owner = sala.players.find(pl => pl.nick === p.owner);
             for (const jugador of jugadores) {
               if (jugador.nick === p.owner || jugador.defeated) continue;
+              
+              // 🤝 No dañar a compañeros de equipo
+              if (areSameTeam(owner, jugador, sala)) continue;
+              
               const jdx = jugador.x - p.targetX;
               const jdy = jugador.y - p.targetY;
               const jdist = Math.sqrt(jdx*jdx + jdy*jdy);
@@ -3400,6 +3546,10 @@ setInterval(async () => {
               console.log(`Aplicando onda expansiva: radio ${mejora.explosionRadius}, daño ${mejora.explosionDamage}`);
               for (const jugador of jugadores) {
                 if (jugador.nick === p.owner || jugador.defeated) continue;
+                
+                // 🤝 No dañar a compañeros de equipo
+                if (areSameTeam(owner, jugador, sala)) continue;
+                
                 const jdx = jugador.x - p.targetX;
                 const jdy = jugador.y - p.targetY;
                 const jdist = Math.sqrt(jdx*jdx + jdy*jdy);
@@ -3542,10 +3692,15 @@ setInterval(async () => {
         proyectiles.splice(i, 1);
         continue;
       }
-      // Colisión con jugadores (no impacta al owner)
+      // Colisión con jugadores (no impacta al owner ni a compañeros de equipo)
+      const owner = sala.players.find(pl => pl.nick === p.owner);
       for (const jugador of jugadores) {
         if (jugador.nick === p.owner) continue;
         if (jugador.defeated) continue; // Ignorar derrotados para colisiones
+        
+        // 🤝 No dañar a compañeros de equipo
+        if (areSameTeam(owner, jugador, sala)) continue;
+        
         // Si el proyectil menor tiene ignoreNick y es el jugador impactado, ignorar daño
         if (p.mejoraId === 'cuchilla_fria_menor' && p.ignoreNick && jugador.nick === p.ignoreNick) continue;
         // Para skyfall, no aplicar daño en colisión, solo al llegar al suelo
@@ -3661,6 +3816,35 @@ setInterval(async () => {
                 maxRange: menorMaxRange
               });
             }
+          } else if (p.mejoraId === 'fragmento_sombra') {
+            // Fragmento de Sombra: daño + crear nube de oscuridad
+            applyDamage(jugador, damage, io, sala.id, 'hit');
+            
+            // Crear nube de oscuridad en el punto de impacto
+            const mejora = MEJORAS.find(m => m.id === 'fragmento_sombra');
+            if (mejora && mejora.effect) {
+              if (!shadowCloudsPorSala[sala.id]) shadowCloudsPorSala[sala.id] = [];
+              
+              shadowCloudsPorSala[sala.id].push({
+                x: jugador.x,
+                y: jugador.y,
+                radius: mejora.effect.cloudRadius || 90,
+                owner: p.owner,
+                createdAt: now,
+                duration: mejora.effect.cloudDuration || 2500,
+                speedBoost: mejora.effect.speedBoost || 1.05,
+                darknessAmount: mejora.effect.darknessAmount || 0.6
+              });
+              
+              // Emitir evento de creación de nube de sombra al cliente
+              io.to(sala.id).emit('shadowCloudCreated', {
+                x: jugador.x,
+                y: jugador.y,
+                radius: mejora.effect.cloudRadius || 90,
+                duration: mejora.effect.cloudDuration || 2500,
+                owner: p.owner
+              });
+            }
           } else {
             // Otros proyectiles: daño normal
             applyDamage(jugador, damage, io, sala.id, 'hit');
@@ -3680,14 +3864,25 @@ setInterval(async () => {
                 jugador.dotType = effect.dotType || 'fire';
                 jugador.lastDotTime = now;
               } else if (effect.type === 'stackingDot') {
-                if (jugador.dotUntil > now) {
-                  jugador.dotDamage += effect.damage;
-                } else {
-                  jugador.dotDamage = effect.damage;
+                // Nuevo sistema de DOTs stackeables por tipo
+                if (!jugador.stackingDots) jugador.stackingDots = {};
+                const dotId = 'veneno'; // ID común para todos los venenos (dardo, arbusto espinoso, etc.)
+                
+                if (!jugador.stackingDots[dotId]) {
+                  jugador.stackingDots[dotId] = {
+                    stacks: 0,
+                    damage: effect.stackDamage || 1, // Daño por segundo por stack
+                    duration: effect.stackDuration || 7000, // Duración de cada stack
+                    lastTickTime: 0,
+                    expiresAt: 0
+                  };
                 }
-                jugador.dotUntil = now + (effect.duration || 6000);
-                jugador.dotType = effect.dotType || 'poison';
-                jugador.lastDotTime = now;
+                
+                // Agregar 1 stack y refrescar duración
+                jugador.stackingDots[dotId].stacks++;
+                jugador.stackingDots[dotId].expiresAt = now + jugador.stackingDots[dotId].duration;
+                
+                console.log(`${mejora.nombre || 'Proyectil'}: ${jugador.nick} recibió 1 stack de veneno (total: ${jugador.stackingDots[dotId].stacks} stacks)`);
               }
             }
             
@@ -3714,7 +3909,12 @@ setInterval(async () => {
                   });
                 } else if (mejora.onHit.type === 'damageStack') {
                   if (typeof portador.electricDamageBonus !== 'number') portador.electricDamageBonus = 0;
-                  portador.electricDamageBonus += mejora.onHit.amount;
+                  // Verificar límite de stacks
+                  const maxStacks = mejora.onHit.maxStacks || Infinity;
+                  const currentStacks = portador.electricDamageBonus / mejora.onHit.amount;
+                  if (currentStacks < maxStacks) {
+                    portador.electricDamageBonus += mejora.onHit.amount;
+                  }
                   // Emitir actualización de daño
                   io.to(sala.id).emit('electricDamageUpdate', {
                     nick: portador.nick,
@@ -3833,6 +4033,82 @@ setInterval(async () => {
         }
       }
       
+      // 🌿 Procesar Arbustos Espinosos - daño, slow y aplicar stacks de veneno
+      if (thornBushesPorSala[sala.id]) {
+        for (const bush of thornBushesPorSala[sala.id]) {
+          const dx = jugador.x - bush.x;
+          const dy = jugador.y - bush.y;
+          const dist = Math.sqrt(dx*dx + dy*dy);
+          
+          // Verificar si está dentro del radio del arbusto
+          if (dist <= bush.radius + 32) { // player radius 32
+            // 🤝 No dañar al owner ni a compañeros de equipo
+            const owner = sala.players.find(p => p.nick === bush.owner);
+            if (jugador.nick === bush.owner || (owner && areSameTeam(owner, jugador, sala))) continue;
+            
+            // El jugador está dentro del arbusto
+            
+            // Aplicar slow
+            jugador.slowUntil = now + 1000; // Renovar el slow cada frame que esté dentro
+            jugador.speed = Math.max(0, DEFAULT_SPEED * (1 - bush.slowAmount));
+            
+            // Aplicar daño cada intervalo (cada segundo)
+            if (now - bush.lastDamageTime >= bush.damageInterval) {
+              applyDamage(jugador, bush.damage, io, sala.id, bush.owner);
+              bush.lastDamageTime = now;
+              
+              // Aplicar 1 stack de veneno (usando el sistema de DOT stackeables)
+              // Usar 'veneno' como ID para compartir stacks con el dardo
+              if (!jugador.stackingDots) jugador.stackingDots = {};
+              if (!jugador.stackingDots['veneno']) {
+                jugador.stackingDots['veneno'] = {
+                  stacks: 0,
+                  damage: bush.stackDamage || 1, // 1 de daño por segundo por stack
+                  duration: bush.stackDuration || 7000, // 7 segundos
+                  lastTickTime: 0,
+                  expiresAt: 0
+                };
+              }
+              
+              // Agregar 1 stack y refrescar duración
+              jugador.stackingDots['veneno'].stacks++;
+              jugador.stackingDots['veneno'].expiresAt = now + jugador.stackingDots['veneno'].duration;
+              
+              console.log(`Arbusto espinoso: ${jugador.nick} recibió ${bush.damage} daño + 1 stack de veneno (total: ${jugador.stackingDots['veneno'].stacks} stacks)`);
+            }
+          }
+        }
+      }
+      
+      // 🌑 Procesar Nubes de Oscuridad (Fragmento de Sombra) - speed boost al owner
+      if (shadowCloudsPorSala[sala.id]) {
+        for (const cloud of shadowCloudsPorSala[sala.id]) {
+          const dx = jugador.x - cloud.x;
+          const dy = jugador.y - cloud.y;
+          const dist = Math.sqrt(dx*dx + dy*dy);
+          
+          // Verificar si está dentro del radio de la nube
+          if (dist <= cloud.radius + 32) { // player radius 32
+            // Si es el owner, aplicar speed boost
+            if (jugador.nick === cloud.owner) {
+              // Aplicar +5% velocidad mientras esté dentro
+              if (!jugador.shadowCloudBoost || jugador.shadowCloudBoost < now) {
+                const baseSpeed = DEFAULT_SPEED;
+                jugador.speed = baseSpeed * cloud.speedBoost;
+                jugador.shadowCloudBoost = now + 100; // Renovar cada 100ms
+              }
+            }
+            // Nota: Los enemigos NO reciben daño, solo oscurecimiento visual (manejado en frontend)
+          } else {
+            // Si el owner sale de la nube, remover el boost
+            if (jugador.nick === cloud.owner && jugador.shadowCloudBoost) {
+              jugador.shadowCloudBoost = 0;
+              jugador.speed = DEFAULT_SPEED;
+            }
+          }
+        }
+      }
+      
       // Descongelar jugador si el tiempo expiró
       if (jugador.frozen && jugador.frozenUntil && now > jugador.frozenUntil) {
         jugador.frozen = false;
@@ -3877,6 +4153,31 @@ setInterval(async () => {
           applyDamage(jugador, dotEffect.damage, io, sala.id, `dot_${dotEffect.elemento}`);
           dotEffect.lastTick = now;
           console.log(`DOT de ${dotEffect.elemento}: ${dotEffect.damage} daño aplicado a ${jugador.nick}`);
+        }
+      }
+      
+      // 🧪 Procesar DOTs stackeables (veneno, etc.)
+      if (jugador.stackingDots) {
+        for (const dotId in jugador.stackingDots) {
+          const dotData = jugador.stackingDots[dotId];
+          
+          // Verificar si expiró
+          if (now > dotData.expiresAt) {
+            delete jugador.stackingDots[dotId];
+            console.log(`${jugador.nick}: Stacks de ${dotId} expiraron`);
+            continue;
+          }
+          
+          // Aplicar daño cada segundo
+          if (!dotData.lastTickTime) dotData.lastTickTime = now;
+          if (now - dotData.lastTickTime >= 1000) {
+            const totalDamage = dotData.damage * dotData.stacks;
+            // Usar 'dot_poison' para que el frontend muestre el color verde
+            const damageType = dotId === 'veneno' ? 'dot_poison' : `dot_${dotId}`;
+            applyDamage(jugador, totalDamage, io, sala.id, damageType);
+            dotData.lastTickTime = now;
+            console.log(`DOT ${dotId}: ${totalDamage} daño (${dotData.stacks} stacks × ${dotData.damage}) aplicado a ${jugador.nick}`);
+          }
         }
       }
       
@@ -4060,6 +4361,29 @@ setInterval(async () => {
       }
       ventiscasPorSala[sala.id] = ventiscasPorSala[sala.id].filter(v => now - v.createdAt < v.duration);
     }
+    // 🌿 Remove expired thorn bushes
+    if (thornBushesPorSala[sala.id]) {
+      const expiredBushes = thornBushesPorSala[sala.id].filter(b => now - b.createdAt >= b.duration);
+      if (expiredBushes.length > 0) {
+        console.log(`Eliminando ${expiredBushes.length} arbustos espinosos expirados`);
+      }
+      thornBushesPorSala[sala.id] = thornBushesPorSala[sala.id].filter(b => now - b.createdAt < b.duration);
+    }
+    // 🌑 Remove expired shadow clouds
+    if (shadowCloudsPorSala[sala.id]) {
+      const expiredClouds = shadowCloudsPorSala[sala.id].filter(c => now - c.createdAt >= c.duration);
+      if (expiredClouds.length > 0) {
+        console.log(`Eliminando ${expiredClouds.length} nubes de sombra expiradas`);
+        // Emitir evento de eliminación de nubes al cliente
+        for (const cloud of expiredClouds) {
+          io.to(sala.id).emit('shadowCloudExpired', {
+            x: cloud.x,
+            y: cloud.y
+          });
+        }
+      }
+      shadowCloudsPorSala[sala.id] = shadowCloudsPorSala[sala.id].filter(c => now - c.createdAt < c.duration);
+    }
     // Remove expired walls (pero NUNCA borrar muros del mapa)
     if (murosPorSala[sala.id]) {
       murosPorSala[sala.id] = murosPorSala[sala.id].filter(muro => {
@@ -4085,6 +4409,7 @@ setInterval(async () => {
       if (castsPorSala[sala.id]) castsPorSala[sala.id] = [];
       if (muddyGroundsPorSala[sala.id]) muddyGroundsPorSala[sala.id] = [];
       if (ventiscasPorSala[sala.id]) ventiscasPorSala[sala.id] = []; // ❄️ Limpiar ventiscas
+      if (thornBushesPorSala[sala.id]) thornBushesPorSala[sala.id] = []; // 🌿 Limpiar arbustos espinosos
       // 🗺️ Limpiar solo muros temporales, mantener bloques permanentes del mapa
       if (murosPorSala[sala.id]) {
         const bloquesMapa = murosPorSala[sala.id].filter(m => m.muroMapa === true);
@@ -4120,8 +4445,10 @@ setInterval(async () => {
       }
       // Avanzar la ronda de la sala
       sala.round = (sala.round || 1) + 1;
-      if (sala.round > 7) {
-        // Fin del juego después de 7 rondas
+      const maxRounds = sala.maxRounds || 7; // Usar el valor configurado o 7 por defecto
+      
+      if (sala.round > maxRounds) {
+        // Fin del juego después de alcanzar el máximo de rondas
         // Determinar el ganador: el que tiene más victorias
         let maxVictories = 0;
         let winner = null;
@@ -4164,6 +4491,8 @@ setInterval(async () => {
         if (tornadosPorSala[sala.id]) tornadosPorSala[sala.id] = [];
         if (castsPorSala[sala.id]) castsPorSala[sala.id] = [];
         if (muddyGroundsPorSala[sala.id]) muddyGroundsPorSala[sala.id] = [];
+        if (ventiscasPorSala[sala.id]) ventiscasPorSala[sala.id] = [];
+        if (thornBushesPorSala[sala.id]) thornBushesPorSala[sala.id] = [];
         if (holyGroundsPorSala[sala.id]) holyGroundsPorSala[sala.id] = [];
         if (murosPorSala[sala.id]) {
           murosPorSala[sala.id] = murosPorSala[sala.id].filter(m => m.muroMapa === true);
@@ -4212,8 +4541,15 @@ setInterval(async () => {
           io.to(sala.id).emit('escenarioMuros', murosPorSala[sala.id]);
         }
         
-        // 🆕 Ronda 4: Habilidades F (proyectilF)
-        if (sala.round === 4) {
+        // � Sistema de aumentos dinámico basado en maxRounds
+        const maxRounds = sala.maxRounds || 7;
+        const currentRound = sala.round;
+        
+        // Calcular en qué ronda se da la habilidad F (aproximadamente a la mitad)
+        const habilidadFRound = Math.floor(maxRounds / 2);
+        
+        // 🆕 Ronda de habilidad F (proyectilF) - aproximadamente a la mitad del juego
+        if (currentRound === habilidadFRound) {
           const habilidadesF = MEJORAS.filter(m => m.proyectilF);
           function shuffle(array) {
             return array.sort(() => Math.random() - 0.5);
@@ -4224,8 +4560,8 @@ setInterval(async () => {
             io.to(sala.id).emit('availableUpgrades', { nick: player.nick, upgrades: selectedUpgrades });
           }
         }
-        // De la ronda 2, 3, 5, 6 y 7: mostrar solo aumentos
-        else if ((sala.round >= 2 && sala.round <= 3) || (sala.round >= 5 && sala.round <= 7)) {
+        // En todas las demás rondas (excepto la 1 y la de habilidad F): mostrar aumentos
+        else if (currentRound >= 2 && currentRound !== habilidadFRound) {
           const aumentoMejoras = MEJORAS.filter(m => m.aumento);
           function shuffle(array) {
             return array.sort(() => Math.random() - 0.5);
@@ -4258,10 +4594,19 @@ setInterval(async () => {
 
 // Endpoint para crear una sala (host)
 app.post('/create-room', (req, res) => {
-  const { nick, nivel } = req.body;
+  const { nick, nivel, maxRounds, gameMode } = req.body;
   if (!nick || !nivel) {
     return res.status(400).json({ error: 'Nick y nivel requeridos.' });
   }
+  
+  // Validar maxRounds (debe ser 7, 10, 15 o 20)
+  const validRounds = [7, 10, 15, 20];
+  const rounds = validRounds.includes(maxRounds) ? maxRounds : 7;
+  
+  // Validar gameMode (debe ser 'ffa' o 'teams')
+  const validModes = ['ffa', 'teams'];
+  const mode = validModes.includes(gameMode) ? gameMode : 'ffa';
+  
   // Buscar si ya existe una sala activa para este host
   let salaExistente = salas.find(s => s.host.nick === nick && s.active !== false);
   if (salaExistente) {
@@ -4272,9 +4617,12 @@ app.post('/create-room', (req, res) => {
   const sala = {
     id,
     host: { nick, nivel },
-    players: [{ nick, nivel }],
+    players: [{ nick, nivel, team: mode === 'teams' ? 1 : null }], // Asignar equipo 1 al host en modo teams
     createdAt: new Date(),
-    active: true
+    active: true,
+    maxRounds: rounds, // Número máximo de rondas configurado
+    round: 1, // Ronda actual
+    gameMode: mode // 'ffa' o 'teams'
   };
   salas.push(sala);
   // Emitir evento global
@@ -4463,7 +4811,7 @@ app.post('/kick-player', (req, res) => {
 
 // Endpoint para unirse a una sala
 app.post('/join-room', (req, res) => {
-  const { id, nick, nivel } = req.body;
+  const { id, nick, nivel, equipped } = req.body;
   if (!id || !nick || !nivel) return res.status(400).json({ error: 'Datos requeridos.' });
   const sala = salas.find(s => s.id === id && s.active !== false);
   if (!sala) return res.status(404).json({ error: 'Sala no encontrada.' });
@@ -4475,7 +4823,19 @@ app.post('/join-room', (req, res) => {
   if (sala.players.length >= 4) {
     return res.status(400).json({ error: 'Sala llena.' });
   }
-  sala.players.push({ nick, nivel, mejoras: [] });
+  
+  // 🤝 Asignar equipo automáticamente en modo teams
+  let team = null;
+  if (sala.gameMode === 'teams') {
+    // Contar jugadores por equipo
+    const team1Count = sala.players.filter(p => p.team === 1).length;
+    const team2Count = sala.players.filter(p => p.team === 2).length;
+    
+    // Asignar al equipo con menos jugadores
+    team = team1Count <= team2Count ? 1 : 2;
+  }
+  
+  sala.players.push({ nick, nivel, mejoras: [], team, equipped: equipped || {} });
   // Emitir evento en tiempo real
   io.to(id).emit('playerJoined', sala);
   io.emit('roomsUpdated');
@@ -4493,5 +4853,45 @@ app.post('/leave-room', (req, res) => {
   io.to(id).emit('playerLeft', sala);
   io.emit('roomsUpdated');
   res.json({ success: true });
+});
+
+// Endpoint para cambiar de equipo
+app.post('/change-team', (req, res) => {
+  const { roomId, nick, newTeam } = req.body;
+  
+  if (!roomId || !nick || !newTeam) {
+    return res.status(400).json({ error: 'Datos requeridos.' });
+  }
+  
+  const sala = salas.find(s => s.id === roomId && s.active !== false);
+  if (!sala) {
+    return res.status(404).json({ error: 'Sala no encontrada.' });
+  }
+  
+  // Verificar que la sala esté en modo equipos
+  if (sala.gameMode !== 'teams') {
+    return res.status(400).json({ error: 'Esta sala no está en modo equipos.' });
+  }
+  
+  // Verificar que el jugador esté en la sala
+  const player = sala.players.find(p => p.nick === nick);
+  if (!player) {
+    return res.status(404).json({ error: 'Jugador no encontrado en la sala.' });
+  }
+  
+  // Verificar que el equipo de destino no esté lleno (máximo 2 por equipo)
+  const teamCount = sala.players.filter(p => p.team === newTeam).length;
+  if (teamCount >= 2) {
+    return res.status(400).json({ error: 'El equipo está lleno.' });
+  }
+  
+  // Cambiar el equipo del jugador
+  player.team = newTeam;
+  
+  // Emitir actualización a todos en la sala
+  io.to(roomId).emit('playerJoined', sala);
+  io.emit('roomsUpdated');
+  
+  res.json({ success: true, sala });
 });
 

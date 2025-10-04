@@ -2,6 +2,9 @@
 // SISTEMA DE TIENDA
 // ============================================
 
+// Determine server URL based on environment
+// SERVER_URL se carga desde config.js
+
 // ============================================
 // DEFINICIÓN DE ITEMS (SOLO ESTÉTICOS)
 // ============================================
@@ -21,6 +24,13 @@ const ITEM_STATS = {
     name: 'Color Verde',
     category: 'colors',
     color: '#2ECC71'
+  },
+  // Rostros (caras)
+  'face-enojado': {
+    name: 'Enojado',
+    category: 'faces',
+    image: 'caras/enojado.png',
+    price: 220
   },
   // Sombreros (futuro)
   // 'hat-crown': {
@@ -82,6 +92,14 @@ function saveUser(user) {
 // Inicializar tienda
 function initShop() {
   const user = getUser();
+  // Estado temporal para previsualización
+  let previewState = {
+    color: user?.equipped?.color,
+    face: user?.equipped?.face,
+    hat: user?.equipped?.hat,
+    weapon: user?.equipped?.weapon,
+    tomb: user?.equipped?.tomb
+  };
   if (!user) {
     console.error('No hay usuario logueado');
     return;
@@ -219,6 +237,8 @@ function setupEventListeners(shopBtn, shopModalOverlay, closeShopModal, shopTabs
 function updateShopPreview() {
   const user = getUser();
   if (!user) return;
+  // Usar previewState si existe
+  const preview = window.previewState || user.equipped;
   
   const characterPreviewCanvas = document.getElementById('characterPreviewCanvas');
   if (!characterPreviewCanvas) return;
@@ -227,7 +247,7 @@ function updateShopPreview() {
   ctx.clearRect(0, 0, 200, 200);
   
   // Obtener color del item equipado usando la nueva función
-  const currentColor = getEquippedColor(user.equipped);
+  const currentColor = getEquippedColor(preview);
   
   ctx.beginPath();
   ctx.arc(100, 100, 40, 0, 2 * Math.PI);
@@ -242,20 +262,41 @@ function updateShopPreview() {
   ctx.strokeStyle = '#fff';
   ctx.stroke();
   
+  // Dibujar rostro si está equipado
+  if (preview && preview.face) {
+    const faceItemId = preview.face;
+    const faceItem = ITEM_STATS[faceItemId];
+    if (faceItem && faceItem.image) {
+      const faceImg = new Image();
+      faceImg.onload = function() {
+        // Dibujar la imagen del rostro centrada en el círculo
+        const imgSize = 100; // Tamaño de la imagen del rostro
+        ctx.drawImage(faceImg, 100 - imgSize/2, 114 - imgSize/2, imgSize, imgSize);
+      };
+      faceImg.src = faceItem.image;
+    }
+  }
+  
   // Actualizar texto de preview
   const previewColorName = document.getElementById('previewColorName');
+  const previewFaceName = document.getElementById('previewFaceName');
   const previewHatName = document.getElementById('previewHatName');
   const previewWeaponName = document.getElementById('previewWeaponName');
   const previewTombName = document.getElementById('previewTombName');
   
   if (previewColorName) {
-    const colorItemId = user.equipped.color;
+    const colorItemId = preview.color;
     const colorName = colorItemId && ITEM_STATS[colorItemId] ? ITEM_STATS[colorItemId].name : 'Por defecto';
     previewColorName.textContent = colorName;
   }
-  if (previewHatName) previewHatName.textContent = user.equipped.hat || 'Ninguno';
-  if (previewWeaponName) previewWeaponName.textContent = user.equipped.weapon || 'Ninguna';
-  if (previewTombName) previewTombName.textContent = user.equipped.tomb || 'Por defecto';
+  if (previewFaceName) {
+    const faceItemId = preview.face;
+    const faceName = faceItemId && ITEM_STATS[faceItemId] ? ITEM_STATS[faceItemId].name : 'Ninguno';
+    previewFaceName.textContent = faceName;
+  }
+  if (previewHatName) previewHatName.textContent = preview.hat || 'Ninguno';
+  if (previewWeaponName) previewWeaponName.textContent = preview.weapon || 'Ninguna';
+  if (previewTombName) previewTombName.textContent = preview.tomb || 'Por defecto';
 }
 
 // Obtener nombre del color
@@ -271,6 +312,33 @@ function getColorName(colorCode) {
 
 // Actualizar estado de los items en la tienda
 function updateShopItems() {
+  // Permitir previsualización al hacer click en cualquier item
+  const shopItems = document.querySelectorAll('.shop-item');
+  shopItems.forEach(item => {
+    item.onclick = () => {
+      const itemId = item.dataset.itemId;
+      if (!itemId) return;
+      // Detectar tipo de item y actualizar previewState
+      if (!window.previewState) window.previewState = { ...getUser().equipped };
+      if (itemId.startsWith('color-')) window.previewState.color = itemId;
+      if (itemId.startsWith('face-')) window.previewState.face = itemId;
+      if (itemId.startsWith('hat-')) window.previewState.hat = itemId;
+      if (itemId.startsWith('weapon-')) window.previewState.weapon = itemId;
+      if (itemId.startsWith('tomb-')) window.previewState.tomb = itemId;
+      updateShopPreview();
+    };
+  });
+
+  // Al cerrar la tienda, restaurar previewState
+  const shopModalOverlay = document.getElementById('shopModalOverlay');
+  if (shopModalOverlay) {
+    shopModalOverlay.addEventListener('transitionend', () => {
+      if (shopModalOverlay.style.display === 'none') {
+        window.previewState = null;
+        updateShopPreview();
+      }
+    });
+  }
   const user = getUser();
   if (!user) return;
   
@@ -336,6 +404,9 @@ function isItemOwned(itemId, user) {
   if (itemId.startsWith('color-')) {
     return user.inventory.colors && user.inventory.colors.includes(itemId);
   }
+  if (itemId.startsWith('face-')) {
+    return user.inventory.faces && user.inventory.faces.includes(itemId);
+  }
   if (itemId.startsWith('hat-')) {
     return user.inventory.hats && user.inventory.hats.includes(itemId);
   }
@@ -353,6 +424,9 @@ function isItemEquipped(itemId, user) {
   if (!user || !user.equipped) return false;
   if (itemId.startsWith('color-')) {
     return user.equipped.color === itemId; // Comparar con ID, no con color
+  }
+  if (itemId.startsWith('face-')) {
+    return user.equipped.face === itemId;
   }
   if (itemId.startsWith('hat-')) {
     return user.equipped.hat === itemId;
@@ -393,12 +467,14 @@ async function buyItem(itemId, price) {
   if (!user.inventory) {
     user.inventory = {
       colors: [],
+      faces: [],
       hats: [],
       weapons: [],
       tombs: []
     };
   }
   if (!user.inventory.colors) user.inventory.colors = [];
+  if (!user.inventory.faces) user.inventory.faces = [];
   if (!user.inventory.hats) user.inventory.hats = [];
   if (!user.inventory.weapons) user.inventory.weapons = [];
   if (!user.inventory.tombs) user.inventory.tombs = [];
@@ -409,6 +485,8 @@ async function buyItem(itemId, price) {
   // Agregar item al inventario según categoría
   if (itemId.startsWith('color-')) {
     user.inventory.colors.push(itemId);
+  } else if (itemId.startsWith('face-')) {
+    user.inventory.faces.push(itemId);
   } else if (itemId.startsWith('hat-')) {
     user.inventory.hats.push(itemId);
   } else if (itemId.startsWith('weapon-')) {
@@ -432,7 +510,7 @@ async function buyItem(itemId, price) {
   
   // Actualizar oro en el backend también
   try {
-    await fetch('http://localhost:3000/updateGold', {
+    await fetch(`${SERVER_URL}/updateGold`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ nick: user.nick, gold: user.gold })
@@ -457,6 +535,8 @@ function equipItem(itemId) {
   // Guardar el ID del item equipado en la categoría correspondiente
   if (itemId.startsWith('color-')) {
     user.equipped.color = itemId; // Guardar ID completo, no solo el color
+  } else if (itemId.startsWith('face-')) {
+    user.equipped.face = itemId;
   } else if (itemId.startsWith('hat-')) {
     user.equipped.hat = itemId;
   } else if (itemId.startsWith('weapon-')) {
@@ -488,6 +568,8 @@ function unequipItem(itemId) {
   
   if (itemId.startsWith('color-')) {
     user.equipped.color = null;
+  } else if (itemId.startsWith('face-')) {
+    user.equipped.face = null;
   } else if (itemId.startsWith('hat-')) {
     user.equipped.hat = null;
   } else if (itemId.startsWith('weapon-')) {
@@ -519,7 +601,7 @@ async function syncInventoryWithBackend(user) {
   if (!user || !user.nick) return;
   
   try {
-    const response = await fetch('http://localhost:3000/saveInventory', {
+    const response = await fetch(`${SERVER_URL}/saveInventory`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json'

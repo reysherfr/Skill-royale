@@ -202,8 +202,8 @@
         <div class="btn-arrow">→</div>
       </button>
 
-      <!-- 🔧 BOTÓN DEV MODE - EDITOR DE MAPAS -->
-      <button id="devEditorBtn" class="action-btn dev-editor-btn">
+      <!-- 🔧 BOTÓN DEV MODE - EDITOR DE MAPAS (OCULTO) -->
+      <button id="devEditorBtn" class="action-btn dev-editor-btn" style="display: none;">
         <div class="btn-icon">
           <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
             <polygon points="12 2 2 7 12 12 22 7 12 2"></polygon>
@@ -217,6 +217,43 @@
         </div>
         <div class="btn-arrow">→</div>
       </button>
+    </div>
+  </div>
+
+  <!-- Modal para Configurar Sala -->
+  <div class="modal-overlay" id="roomConfigModalOverlay">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h2>⚙️ Configurar Partida</h2>
+        <button class="modal-close-btn" id="closeRoomConfigModal">×</button>
+      </div>
+      <div class="modal-body">
+        <p class="modal-info">Personaliza las reglas de tu partida</p>
+        
+        <div class="input-group">
+          <label for="gameModeSelect">Modo de Juego:</label>
+          <select id="gameModeSelect" class="game-mode-select">
+            <option value="ffa">⚔️ Todos contra Todos (FFA)</option>
+            <option value="teams">🤝 Equipos 2 vs 2</option>
+          </select>
+          <span class="input-hint">En modo equipos, los jugadores se dividen en 2 equipos de 2</span>
+        </div>
+        
+        <div class="input-group">
+          <label for="roundsSelect">Número de Rondas:</label>
+          <select id="roundsSelect" class="rounds-select">
+            <option value="7">7 Rondas</option>
+            <option value="10">10 Rondas</option>
+            <option value="15">15 Rondas</option>
+            <option value="20">20 Rondas</option>
+          </select>
+          <span class="input-hint">El ganador será quien gane más rondas</span>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button class="modal-btn cancel-btn" id="cancelRoomConfigBtn">Cancelar</button>
+        <button class="modal-btn confirm-btn" id="confirmRoomConfigBtn">Crear Sala</button>
+      </div>
     </div>
   </div>
 
@@ -293,6 +330,7 @@
           </div>
           <div class="preview-info">
             <p><strong>Color:</strong> <span id="previewColorName">Por defecto</span></p>
+            <p><strong>Rostro:</strong> <span id="previewFaceName">Ninguno</span></p>
             <p><strong>Sombrero:</strong> <span id="previewHatName">Ninguno</span></p>
             <p><strong>Arma:</strong> <span id="previewWeaponName">Ninguna</span></p>
             <p><strong>Tumba:</strong> <span id="previewTombName">Por defecto</span></p>
@@ -306,6 +344,10 @@
             <button class="shop-tab active" data-category="personaje">
               <span class="tab-icon">🎨</span>
               <span>Personaje</span>
+            </button>
+            <button class="shop-tab" data-category="rostro">
+              <span class="tab-icon">😊</span>
+              <span>Rostro</span>
             </button>
             <button class="shop-tab" data-category="sombrero">
               <span class="tab-icon">🎩</span>
@@ -359,6 +401,22 @@
               </div>
             </div>
 
+            <!-- Categoría: Rostro -->
+            <div class="shop-items" data-category="rostro">
+              <div class="shop-item" data-item-id="face-enojado" data-price="0">
+                  <div class="item-preview">
+                    <img src="caras/enojado.png" alt="Enojado" style="width: 48px; height: 48px;">
+                  </div>
+                  <div class="item-info">
+                    <h4>Enojado</h4>
+                    <p class="item-price"><img src="iconos/oro.png" alt="Oro" style="width: 20px; height: 20px; vertical-align: middle;"> 220 Oro</p>
+                  </div>
+                  <button class="item-buy-btn">Obtener</button>
+                </div>
+                <!-- Eliminado bloque duplicado de 'Enojado' gratis -->
+              </div>
+            </div>
+
             <!-- Categoría: Sombrero -->
             <div class="shop-items" data-category="sombrero">
               <div class="empty-category">
@@ -389,6 +447,7 @@
   </div>
 
   <script src="/socket.io/socket.io.js"></script>
+  <script src="config.js"></script>
   <script src="soundManager.js"></script>
   <script src="tienda.js"></script>
   <script src="menu.js"></script>

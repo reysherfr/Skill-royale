@@ -76,6 +76,11 @@ class Proyectil {
         this.drawDart(ctx, screenX, screenY);
         break;
 
+      case 'fragmento_sombra':
+        // Fragmento de sombra oscuro
+        this.drawShadowFragment(ctx, screenX, screenY);
+        break;
+
       case 'cuchilla_fria_menor':
         // Cuchilla de hielo
         this.drawIceBlade(ctx, screenX, screenY);
@@ -109,6 +114,11 @@ class Proyectil {
       case 'gancho':
         // Gancho con cadena
         this.drawHook(ctx, screenX, screenY, offsetX, offsetY);
+        break;
+
+      case 'arbusto_espinoso':
+        // Arbusto espinoso venenoso
+        this.drawThornyBush(ctx, screenX, screenY);
         break;
 
       case 'super_meteoro':
@@ -329,6 +339,86 @@ class Proyectil {
     ctx.lineTo(-dartLength * 0.4, 0);
     ctx.closePath();
     ctx.fill();
+    
+    ctx.restore();
+  }
+
+  // Fragmento de sombra con efecto oscuro
+  drawShadowFragment(ctx, x, y) {
+    const time = Date.now() * 0.003;
+    const baseRadius = this.radius;
+    
+    ctx.save();
+    ctx.translate(x, y);
+    ctx.rotate(this.angle);
+    
+    // Aura de sombra externa (efecto de niebla)
+    for (let i = 0; i < 3; i++) {
+      const auraRadius = baseRadius * (1.8 - i * 0.3);
+      const alpha = 0.15 - i * 0.04;
+      
+      ctx.beginPath();
+      ctx.arc(0, 0, auraRadius, 0, Math.PI * 2);
+      const gradient = ctx.createRadialGradient(0, 0, 0, 0, 0, auraRadius);
+      gradient.addColorStop(0, `rgba(30, 30, 50, ${alpha})`);
+      gradient.addColorStop(0.6, `rgba(15, 15, 30, ${alpha * 0.7})`);
+      gradient.addColorStop(1, 'rgba(0, 0, 0, 0)');
+      ctx.fillStyle = gradient;
+      ctx.fill();
+    }
+    
+    // Núcleo principal de sombra
+    ctx.beginPath();
+    ctx.arc(0, 0, baseRadius, 0, Math.PI * 2);
+    const coreGradient = ctx.createRadialGradient(0, 0, 0, 0, 0, baseRadius);
+    coreGradient.addColorStop(0, '#4a4a6e');
+    coreGradient.addColorStop(0.5, '#2c2c3e');
+    coreGradient.addColorStop(1, '#1a1a28');
+    ctx.fillStyle = coreGradient;
+    ctx.shadowColor = '#1a1a28';
+    ctx.shadowBlur = 15;
+    ctx.fill();
+    
+    // Partículas de sombra orbitando
+    for (let i = 0; i < 4; i++) {
+      const angle = (time + i * Math.PI / 2) % (Math.PI * 2);
+      const distance = baseRadius * 1.3;
+      const px = Math.cos(angle) * distance;
+      const py = Math.sin(angle) * distance;
+      const particleSize = baseRadius * 0.2;
+      
+      ctx.beginPath();
+      ctx.arc(px, py, particleSize, 0, Math.PI * 2);
+      ctx.fillStyle = 'rgba(60, 60, 80, 0.6)';
+      ctx.fill();
+    }
+    
+    // Vórtice central (espiral oscura)
+    ctx.strokeStyle = 'rgba(80, 80, 100, 0.4)';
+    ctx.lineWidth = 1.5;
+    for (let i = 0; i < 2; i++) {
+      ctx.beginPath();
+      const spiralAngle = time * 2 + i * Math.PI;
+      const spiralRadius = baseRadius * 0.6;
+      ctx.moveTo(
+        Math.cos(spiralAngle) * spiralRadius * 0.3,
+        Math.sin(spiralAngle) * spiralRadius * 0.3
+      );
+      ctx.quadraticCurveTo(
+        Math.cos(spiralAngle + 0.5) * spiralRadius * 0.7,
+        Math.sin(spiralAngle + 0.5) * spiralRadius * 0.7,
+        Math.cos(spiralAngle + 1) * spiralRadius,
+        Math.sin(spiralAngle + 1) * spiralRadius
+      );
+      ctx.stroke();
+    }
+    
+    // Borde exterior sutil
+    ctx.beginPath();
+    ctx.arc(0, 0, baseRadius, 0, Math.PI * 2);
+    ctx.strokeStyle = 'rgba(100, 100, 130, 0.5)';
+    ctx.lineWidth = 1;
+    ctx.stroke();
     
     ctx.restore();
   }
@@ -880,6 +970,107 @@ class Proyectil {
     ctx.restore();
   }
 
+  // Arbusto espinoso - Área de veneno con espinas
+  drawThornyBush(ctx, x, y) {
+    const time = Date.now() * 0.003;
+    const pulseSize = Math.sin(time * 2) * 0.1 + 1;
+    
+    ctx.save();
+    ctx.translate(x, y);
+    
+    // Círculo exterior de veneno (pulsante)
+    const outerGradient = ctx.createRadialGradient(0, 0, 0, 0, 0, this.radius * pulseSize);
+    outerGradient.addColorStop(0, 'rgba(34, 139, 34, 0.6)'); // verde oscuro
+    outerGradient.addColorStop(0.4, 'rgba(50, 205, 50, 0.4)'); // verde lima
+    outerGradient.addColorStop(0.7, 'rgba(0, 255, 0, 0.2)'); // verde brillante
+    outerGradient.addColorStop(1, 'rgba(34, 139, 34, 0)');
+    
+    ctx.beginPath();
+    ctx.arc(0, 0, this.radius * pulseSize, 0, Math.PI * 2);
+    ctx.fillStyle = outerGradient;
+    ctx.fill();
+    
+    // Círculo interior venenoso
+    const innerGradient = ctx.createRadialGradient(0, 0, 0, 0, 0, this.radius * 0.7);
+    innerGradient.addColorStop(0, 'rgba(34, 139, 34, 0.8)');
+    innerGradient.addColorStop(0.5, 'rgba(107, 142, 35, 0.6)');
+    innerGradient.addColorStop(1, 'rgba(34, 139, 34, 0.3)');
+    
+    ctx.beginPath();
+    ctx.arc(0, 0, this.radius * 0.7, 0, Math.PI * 2);
+    ctx.fillStyle = innerGradient;
+    ctx.shadowColor = '#32CD32';
+    ctx.shadowBlur = 15;
+    ctx.fill();
+    ctx.shadowBlur = 0;
+    
+    // Arbusto central con ramas
+    const branchCount = 8;
+    for (let i = 0; i < branchCount; i++) {
+      const angle = (Math.PI * 2 * i / branchCount) + time * 0.5;
+      const branchLength = this.radius * (0.5 + Math.sin(time + i) * 0.1);
+      
+      ctx.strokeStyle = 'rgba(85, 107, 47, 0.9)'; // verde oliva oscuro
+      ctx.lineWidth = 4;
+      
+      ctx.beginPath();
+      ctx.moveTo(0, 0);
+      ctx.lineTo(Math.cos(angle) * branchLength, Math.sin(angle) * branchLength);
+      ctx.stroke();
+      
+      // Espinas en las ramas
+      const thornsPerBranch = 3;
+      for (let j = 1; j <= thornsPerBranch; j++) {
+        const thornPos = j / (thornsPerBranch + 1);
+        const thornX = Math.cos(angle) * branchLength * thornPos;
+        const thornY = Math.sin(angle) * branchLength * thornPos;
+        const thornAngle = angle + Math.PI / 2;
+        const thornLength = 10;
+        
+        ctx.strokeStyle = 'rgba(139, 69, 19, 0.8)'; // marrón para espinas
+        ctx.lineWidth = 2;
+        
+        ctx.beginPath();
+        ctx.moveTo(thornX, thornY);
+        ctx.lineTo(
+          thornX + Math.cos(thornAngle) * thornLength,
+          thornY + Math.sin(thornAngle) * thornLength
+        );
+        ctx.stroke();
+      }
+    }
+    
+    // Partículas de veneno flotantes
+    const particleCount = 12;
+    ctx.fillStyle = 'rgba(0, 255, 0, 0.7)';
+    for (let i = 0; i < particleCount; i++) {
+      const angle = (Math.PI * 2 * i / particleCount) + time * 2;
+      const distance = this.radius * (0.3 + Math.sin(time * 3 + i) * 0.3);
+      const px = Math.cos(angle) * distance;
+      const py = Math.sin(angle) * distance;
+      const particleSize = 3 + Math.sin(time * 4 + i) * 1.5;
+      
+      ctx.beginPath();
+      ctx.arc(px, py, particleSize, 0, Math.PI * 2);
+      ctx.shadowColor = '#00FF00';
+      ctx.shadowBlur = 8;
+      ctx.fill();
+    }
+    
+    ctx.shadowBlur = 0;
+    
+    // Borde exterior punteado (espinoso)
+    ctx.beginPath();
+    ctx.arc(0, 0, this.radius, 0, Math.PI * 2);
+    ctx.strokeStyle = 'rgba(34, 139, 34, 0.8)';
+    ctx.lineWidth = 2;
+    ctx.setLineDash([5, 5]);
+    ctx.stroke();
+    ctx.setLineDash([]);
+    
+    ctx.restore();
+  }
+
   // Super Meteoro - Meteoro gigante apocalíptico
   drawSuperMeteor(ctx, x, y) {
     const time = Date.now() * 0.004;
@@ -1251,10 +1442,11 @@ const MEJORAS = [
     radius: 9,
     activacionRapida: false, // Requiere apuntar
     elemento: 'electrico',
-    descripcion: 'Daño inicial: 9, Velocidad: 14.5, (radio 9) Rango: 1000. Pasiva: cada vez que aciertas a un enemigo, el daño aumenta en 2. Al ganar o perder la ronda, el daño vuelve a 9.',
+    descripcion: 'Daño inicial: 9, Velocidad: 14.5, (radio 9) Rango: 1000. Pasiva: cada vez que aciertas a un enemigo, el daño aumenta en 2 (máx 10 stacks). Al ganar o perder la ronda, el daño vuelve a 9.',
     onHit: {
       type: 'damageStack',
-      amount: 2
+      amount: 2,
+      maxStacks: 10
     }
   },
   {
@@ -1307,6 +1499,21 @@ const MEJORAS = [
     activacionRapida: false, // Requiere apuntar
     elemento: 'veneno',
     descripcion: 'Daño: 12, Velocidad: 13, Radio: 14, Rango: 750. Envenena al enemigo: +1 daño/seg por 6 seg por impacto, stackea ilimitadamente. Refresca duración al impactar.'
+  },
+  {
+    id: 'fragmento_sombra',
+    nombre: 'Fragmento de Sombra',
+    color: '#2c2c3e',
+    velocidad: 11,
+    danio: 12,
+    cooldown: 1350, // ms
+    effect: { cloudRadius: 90, cloudDuration: 2500, speedBoost: 1.05, darknessAmount: 0.6 },
+    maxRange: 800,
+    proyectil: true,
+    radius: 13,
+    activacionRapida: false, // Requiere apuntar
+    elemento: 'oscuridad',
+    descripcion: 'Daño: 12, Velocidad: 11, Radio: 13, Rango: 800. Al impactar genera una nube de oscuridad  que oscurece la visión de los enemigos. Tú ganas +5% velocidad dentro de la nube.'
   }
 ];
 // Nueva habilidad: Roca fangosa
@@ -1368,7 +1575,7 @@ MEJORAS.push({
   autoCast: true, // se activa debajo del jugador
   activacionRapida: true, // Fastcast
   elemento: 'curacion',
-  descripcion: 'Invoca un área sagrada que cura 7 de vida por segundo durante 3 segundos solo al invocador. CD: 9s. Se activa debajo del jugador al presionar E.'
+  descripcion: 'Invoca un área sagrada que cura 7 de vida por segundo durante 3 segundos a ti y a tus aliados. CD: 9s. Se activa debajo del jugador al presionar E.'
 });
 // Nueva habilidad: Escudo Mágico
 MEJORAS.push({
@@ -1407,6 +1614,29 @@ MEJORAS.push({
   },
   descripcion: 'Lanza un gancho. Si impacta un muro, jala al usuario hacia él. Si impacta un enemigo, lo jala y lo ralentiza 25% por 1.5s. Reduce CD en 50% al impactar. Daño: 20, CD: 10s, Rango: 700.'
 });
+// Nueva habilidad: Arbusto espinoso
+MEJORAS.push({
+  id: 'arbusto_espinoso',
+  nombre: 'Arbusto espinoso',
+  color: '#228B22', // verde oscuro
+  velocidad: 0, // No se mueve
+  danio: 15, // 15 de daño por segundo
+  cooldown: 10000, // 10 segundos
+  proyectilE: true,
+  radius: 145, // área del arbusto
+  aimRange: 580,
+  maxRange: 580,
+  duracion: 3500, // 3.5 segundos
+  castTime: 800, // 0.8 segundos
+  activacionRapida: false, // Requiere apuntar
+  elemento: 'veneno',
+  stackingDot: true, // Aplica veneno acumulable
+  stackDamage: 2, // 2 de daño por segundo por stack (compartido con dardo)
+  stackDuration: 7000, // 7 segundos de duración por stack (igual que dardo)
+  slowAmount: 0.2, // 20% de slow
+  damageInterval: 1000, // Aplicar daño cada segundo
+  descripcion: 'Crea un arbusto espinoso que ralentiza 20% y aplica 15 daño/s más stacks de veneno (sinergia con Dardo). Dura 3.5s. CD: 10s, Rango: 580, Radio: 145, Cast: 0.8s.'
+});
 // Nueva habilidad: Teleport
 MEJORAS.push({
   id: 'teleport',
@@ -1431,10 +1661,10 @@ MEJORAS.push({
   danio: 0,
   cooldown: 7000, // 7 segundos
   proyectilEspacio: true,
-  effect: { type: 'speedBoost', amount: 0.5, duration: 2500 }, // 50% speed boost por 2.5 segundos
+  effect: { type: 'speedBoost', amount: 1.25, duration: 2500 }, // 125% speed boost por 2.5 segundos
   activacionRapida: true,
   elemento: 'movimiento',
-  descripcion: 'Aumenta la velocidad de movimiento del jugador un 50% por 2.5 segundos. CD: 7s. Activación rápida.'
+  descripcion: 'Aumenta la velocidad de movimiento del jugador un 125% por 2.5 segundos. CD: 7s. Activación rápida.'
 });
 
 // Nueva habilidad: Embestida

@@ -775,7 +775,7 @@ function ocultarHUDHabilidadesF() {
 
 // Determine server URL based on environment
 // Usar IP pública del servidor en producción
-const SERVER_URL = window.location.hostname === 'localhost' ? 'http://localhost:3000' : 'http://138.68.250.124:3000';
+// SERVER_URL se carga desde config.js
 
 const socket = io(SERVER_URL);
 
@@ -820,7 +820,7 @@ if (user && user.nick) {
 
 // Función wrapper para renderizar con debounce
 function scheduleRender(updatedSala) {
-  console.log('🔵 [DEBUG FRONTEND] scheduleRender llamado con', updatedSala?.players?.length || 0, 'jugadores');
+  // ...
   // Cancelar cualquier renderizado pendiente
   if (renderTimeout) {
     clearTimeout(renderTimeout);
@@ -856,10 +856,7 @@ socket.on('playerLeft', (updatedSala) => {
 
 // Escuchar cuando un jugador se une a la sala y actualizar la lista en tiempo real
 socket.on('playerJoined', (updatedSala) => {
-  console.log('🟢 [DEBUG FRONTEND] playerJoined recibido:', {
-    jugadores: updatedSala?.players?.length || 0,
-    nicks: updatedSala?.players?.map(p => p.nick) || []
-  });
+  // ...
   scheduleRender(updatedSala);
 });
 
@@ -893,7 +890,7 @@ socket.on('playersUpdate', (serverPlayers) => {
   // Si la cantidad de jugadores cambió, actualizar lista y renderizar
   let changed = false;
   if (serverPlayers.length !== players.length) changed = true;
-  // Sincronizar vida y posición de cada jugador
+  // Sincronizar vida, posición y ángulo de cada jugador
   for (const sp of serverPlayers) {
     let local = players.find(p => p.nick === sp.nick);
     if (!local) {
@@ -906,9 +903,8 @@ socket.on('playersUpdate', (serverPlayers) => {
       });
       players.push(local);
       changed = true;
-      
       // Debug: verificar maxHealth al crear jugador
-      console.log(`🆕 Nuevo jugador: ${sp.nick} | Health: ${sp.health}/${sp.maxHealth || 200}`);
+      // console.log(`🆕 Nuevo jugador: ${sp.nick} | Health: ${sp.health}/${sp.maxHealth || 200} | Equipo: ${sp.team || 'N/A'}`);
     }
     // Actualizar color del servidor si cambió
     if (sp.color && local.color !== sp.color) {
@@ -916,7 +912,9 @@ socket.on('playersUpdate', (serverPlayers) => {
     }
     local.health = sp.health;
     local.maxHealth = sp.maxHealth || 200; // Actualizar maxHealth desde el servidor
-    
+    local.team = sp.team; // 🎮 Actualizar equipo del jugador
+    // Sincronizar ángulo de mirada
+    local.lookAngle = typeof sp.lookAngle === 'number' ? sp.lookAngle : 0;
     // SIEMPRE actualizar targetX/targetY desde el servidor para TODOS los jugadores
     // El servidor es autoritativo, incluso para el jugador local
     local.targetX = sp.x;
@@ -926,7 +924,6 @@ socket.on('playersUpdate', (serverPlayers) => {
       local.x = sp.x;
       local.y = sp.y;
     }
-    
     local.speed = sp.speed;
     local.speedBoostUntil = sp.speedBoostUntil || 0;
     local.defeated = sp.defeated;
@@ -939,17 +936,14 @@ socket.on('playersUpdate', (serverPlayers) => {
       const mejorasNormales = mejorasJugador.filter(m => !m.proyectilQ && !m.proyectilE && !m.proyectilEspacio && !m.proyectilF && !m.aumento);
       const mejorasQ = mejorasJugador.filter(m => m.proyectilQ);
       const mejorasF = mejorasJugador.filter(m => m.proyectilF);
-
       // Actualizar mejoraSeleccionada a la última mejora normal
       if (mejorasNormales.length > 0) {
         mejoraSeleccionada = mejorasNormales[mejorasNormales.length - 1];
       }
-
       // Actualizar mejoraQSeleccionada a la última mejora Q
       if (mejorasQ.length > 0) {
         mejoraQSeleccionada = mejorasQ[mejorasQ.length - 1];
       }
-
       // Actualizar mejoraFSeleccionada a la última mejora F
       if (mejorasF.length > 0) {
         mejoraFSeleccionada = mejorasF[mejorasF.length - 1];
@@ -968,8 +962,23 @@ socket.on('playersUpdate', (serverPlayers) => {
   }
 });
 
+socket.on('gameStartError', (data) => {
+  // Mostrar mensaje de error en un HUD
+  mostrarNotificacion(data.error, 'error');
+});
+
 socket.on('gameStarted', (updatedSala) => {
   sala = updatedSala;
+  
+  // 📊 Actualizar el número máximo de rondas desde el servidor
+  if (updatedSala.maxRounds) {
+    maxRounds = updatedSala.maxRounds;
+  }
+  
+  // 🎮 Actualizar el modo de juego desde el servidor
+  if (updatedSala.gameMode) {
+    gameMode = updatedSala.gameMode;
+  }
   
   // 🎵 Cambiar de música del menú a música de batalla
   if (menuMusic) {
@@ -1017,6 +1026,7 @@ let superMeteoroAiming = false; // Si está apuntando Super Meteoro
 let ventiscaAiming = false; // Si está apuntando Ventisca
 let muroPiedraAiming = false; // Si está en modo preview de muro de piedra
 let ganchoAiming = false; // Si está en modo preview de gancho
+let arbustoEspinosoAiming = false; // Si está en modo preview de arbusto espinoso
 let spaceAiming = false; // Si está en modo preview de habilidad espacio
 let tumbas = []; // Array de tumbas { nick, x, y }
 let tumbaImage = null; // Imagen de la tumba
@@ -1031,6 +1041,8 @@ let activeCasts = []; // Array de casts activos: [{ position: {x, y}, startTime,
 let activeMuddyGrounds = []; // Array de suelos fangosos: [{ x, y, radius, duration, createdAt }]
 let activeVentiscas = []; // Array de ventiscas activas: [{ x, y, width, height, duration, createdAt }]
 let activeSacredGrounds = []; // Array de suelos sagrados: [{ x, y, radius, duration, createdAt, owner }]
+let activeThornBushes = []; // Array de arbustos espinosos: [{ x, y, radius, duration, createdAt, owner }]
+let activeShadowClouds = []; // Array de nubes de oscuridad: [{ x, y, radius, duration, createdAt, owner }]
 let activeLasers = []; // Array de láseres continuos activos
 let mostrarSoloProyectilQ = false;
 let hudTimer = 15;
@@ -1041,6 +1053,13 @@ let lastTime = 0;
 let fps = 0;
 let frameCount = 0;
 let lastFpsUpdate = 0;
+
+// 😊 Cache de imágenes de rostros
+window.faceImagesCache = {};
+// Pre-cargar imagen de rostro enojado
+const preloadFaceImg = new Image();
+preloadFaceImg.src = 'caras/enojado.png';
+window.faceImagesCache['enojado'] = preloadFaceImg;
 
 // 🎮 NUEVO SISTEMA DE MOVIMIENTO ESTILO BATTLERITE
 let keys = { w: false, a: false, s: false, d: false };
@@ -1055,6 +1074,8 @@ const INTERPOLATION_SPEED = 0.35; // Factor de suavizado optimizado
 let lastQFireTime = 0;
 let lastFFireTime = 0; // Cooldown para la tecla F
 let currentRound = 1; // Contador de rondas
+let maxRounds = 7; // Número máximo de rondas (se actualiza desde el servidor)
+let gameMode = 'ffa'; // Modo de juego ('ffa' o 'teams')
 let roundHUD = null; // HUD del contador de rondas
 let abilityHUD = null; // HUD de habilidades abajo
 // Verifica si el jugador puede moverse a la posición (x, y) sin colisionar con muros
@@ -1325,8 +1346,51 @@ function drawPlayers() {
       ctx.strokeStyle = 'rgba(255, 255, 0, 0.8)'; // amarillo transparente
       ctx.stroke();
     }
-    // Nombre grande y centrado
-    ctx.fillStyle = '#222';
+    
+    // 😊 Dibujar rostro equipado si existe (similar al sistema de color)
+    if (player.equipped && player.equipped.face) {
+      const faceId = player.equipped.face;
+      const faceName = faceId.replace('face-', ''); // Ejemplo: 'face-enojado' -> 'enojado'
+
+      // Crear imagen si no existe en cache
+      if (!window.faceImagesCache) window.faceImagesCache = {};
+      if (!window.faceImagesCache[faceName]) {
+        const img = new Image();
+        img.src = `caras/${faceName}.png`;
+        window.faceImagesCache[faceName] = img;
+      }
+      const faceImg = window.faceImagesCache[faceName];
+
+      // Dibujar si la imagen está cargada
+      if (faceImg && faceImg.complete && faceImg.naturalHeight > 0) {
+        const faceSize = 100; // Tamaño del rostro
+        ctx.save();
+        ctx.translate(relativeX, relativeY);
+        // Rotar según el ángulo de mirada (lookAngle)
+        const angle = player.lookAngle || 0;
+  ctx.rotate(angle - Math.PI/2);
+        ctx.drawImage(faceImg, -faceSize/2, -faceSize/3, faceSize, faceSize);
+        ctx.restore();
+      }
+    }
+    
+    // Restaurar alpha si estaba invisible
+    if (isInvisible && player.nick === user.nick) {
+      ctx.globalAlpha = 1.0;
+    }
+    
+    // Nombre grande y centrado con color según equipo
+    // En modo equipos: verde para aliados, rojo para enemigos
+    // En modo FFA: negro para todos
+    if (gameMode === 'teams' && localPlayer.team && player.team) {
+      if (localPlayer.team === player.team) {
+        ctx.fillStyle = '#00FF00'; // Verde para aliados
+      } else {
+        ctx.fillStyle = '#FF0000'; // Rojo para enemigos
+      }
+    } else {
+      ctx.fillStyle = '#222'; // Negro por defecto en FFA
+    }
     ctx.font = 'bold 20px Roboto, Arial';
     ctx.textAlign = 'center';
     ctx.fillText(player.nick, relativeX, relativeY - 40);
@@ -1406,6 +1470,44 @@ function drawPlayers() {
       ctx.globalAlpha = 1.0;
     }
   });
+  
+  // 🌑 Aplicar efecto de oscurecimiento radial si el jugador local está dentro de una nube enemiga
+  if (localPlayer && !localPlayer.defeated) {
+    for (const cloud of activeShadowClouds) {
+      // Verificar si es una nube enemiga
+      if (cloud.owner === localPlayer.nick) continue; // Ignorar propias nubes
+      
+      // Calcular distancia del jugador al centro de la nube
+      const dx = localPlayer.x - cloud.x;
+      const dy = localPlayer.y - cloud.y;
+      const dist = Math.sqrt(dx * dx + dy * dy);
+      
+      // Si está dentro del radio de la nube
+      if (dist <= cloud.radius + 32) { // player radius 32
+        // Aplicar efecto de oscurecimiento RADIAL desde el jugador
+        ctx.save();
+        
+        // Posición del jugador en pantalla
+        const screenX = canvas.width / 2;
+        const screenY = canvas.height / 2;
+        
+        // Crear gradiente radial con 3 zonas:
+        // 0-40: clara, 41-100: 70% oscura, 101+: 100% oscura
+        const gradient = ctx.createRadialGradient(screenX, screenY, 0, screenX, screenY, canvas.width);
+        gradient.addColorStop(0, 'rgba(10, 10, 20, 0)'); // Centro: 0% oscuro (40 unidades)
+        gradient.addColorStop(40 / canvas.width, 'rgba(10, 10, 20, 0)'); // Hasta 40: 0% oscuro
+        gradient.addColorStop(100 / canvas.width, 'rgba(10, 10, 20, 0.7)'); // 41-100: 70% oscuro
+        gradient.addColorStop(101 / canvas.width, 'rgba(10, 10, 20, 1)'); // 101+: 100% oscuro
+        gradient.addColorStop(1, 'rgba(10, 10, 20, 1)'); // Resto: 100% oscuro
+        
+        ctx.fillStyle = gradient;
+        ctx.fillRect(0, 0, canvas.width, canvas.height);
+        ctx.restore();
+        
+        break; // Solo aplicar el efecto de la primera nube encontrada
+      }
+    }
+  }
 }
 import { Player, createPlayersFromSala } from './players.js';
 
@@ -1711,7 +1813,7 @@ function mostrarHUDRondas() {
   roundHUD.style.border = '2px solid #fff';
   roundHUD.style.boxShadow = '0 4px 12px rgba(0, 0, 0, 0.5)';
   roundHUD.style.zIndex = '999';
-  roundHUD.textContent = `Ronda ${currentRound}`;
+  roundHUD.textContent = `Ronda ${currentRound}/${maxRounds}`;
   
   document.body.appendChild(roundHUD);
 }
@@ -2142,7 +2244,8 @@ function gameLoop() {
   drawMap();
   drawTumbas(); // Dibujar tumbas antes de los jugadores
   drawPlayers();
-  // 🎯 Renderizar kill feed
+  
+  //  Renderizar kill feed
   renderKillFeed(ctx);
   // Usar requestAnimationFrame para actualizaciones más suaves
   gameLoopId = requestAnimationFrame(gameLoop);
@@ -2155,6 +2258,8 @@ function initGame() {
   activeMuddyGrounds = [];
   activeVentiscas = []; // ❄️ Limpiar ventiscas
   activeSacredGrounds = [];
+  activeThornBushes = [];
+  activeShadowClouds = []; // 🌑 Limpiar nubes de sombra
   tumbas = [];
   explosions.length = 0;
   
@@ -2213,11 +2318,30 @@ function initGame() {
     const rect = canvas.getBoundingClientRect();
     mouseX = e.clientX - rect.left;
     mouseY = e.clientY - rect.top;
-    
+
+    // Calcular ángulo entre el jugador local y el mouse
+    const localPlayer = players.find(p => p.nick === user.nick);
+    if (localPlayer) {
+      const offsetX = cameraX - canvas.width / 2;
+      const offsetY = cameraY - canvas.height / 2;
+      const mouseWorldX = mouseX + offsetX;
+      const mouseWorldY = mouseY + offsetY;
+      const dx = mouseWorldX - localPlayer.x;
+      const dy = mouseWorldY - localPlayer.y;
+      const newAngle = Math.atan2(dy, dx);
+      if (typeof localPlayer.lookAngle !== 'number' || Math.abs(localPlayer.lookAngle - newAngle) > 0.01) {
+        localPlayer.lookAngle = newAngle;
+        socket.emit('updateLookAngle', {
+          roomId,
+          nick: user.nick,
+          lookAngle: newAngle
+        });
+      }
+    }
+
     // 🆕 Actualizar ángulo del láser si el jugador tiene uno activo
     const myLaser = activeLasers.find(l => l.owner === user.nick && l.mejoraId === 'laser');
     if (myLaser) {
-      const localPlayer = players.find(p => p.nick === user.nick);
       if (localPlayer) {
         const offsetX = cameraX - canvas.width / 2;
         const offsetY = cameraY - canvas.height / 2;
@@ -2226,7 +2350,6 @@ function initGame() {
         const dx = mouseWorldX - myLaser.x;
         const dy = mouseWorldY - myLaser.y;
         const newAngle = Math.atan2(dy, dx);
-        
         // Enviar actualización al servidor (throttled)
         if (!myLaser.lastAngleUpdate || Date.now() - myLaser.lastAngleUpdate > 50) {
           myLaser.lastAngleUpdate = Date.now();
@@ -2238,7 +2361,7 @@ function initGame() {
         }
       }
     }
-    
+
     // Cambiar cursor si está apuntando Roca fangosa
     if (rocaFangosaAiming && mejoraQSeleccionada && mejoraQSeleccionada.nombre === 'Roca fangosa') {
       canvas.style.cursor = 'none'; // Ocultar cursor normal
@@ -2545,6 +2668,78 @@ function drawMap() {
       ctx.beginPath();
       ctx.arc(ganchoMejora.radius * 0.5, 0, ganchoMejora.radius * 0.5, -Math.PI / 2, Math.PI / 2);
       ctx.stroke();
+      
+      ctx.restore();
+    }
+  }
+
+  // Preview de arbusto espinoso
+  if (arbustoEspinosoAiming) {
+    const arbustoMejora = mejorasJugador.find(m => m.id === 'arbusto_espinoso');
+    const localPlayer = players.find(p => p.nick === user.nick);
+    if (arbustoMejora && localPlayer) {
+      const centerX = localPlayer.x - offsetX;
+      const centerY = localPlayer.y - offsetY;
+      
+      // Círculo de rango máximo alrededor del jugador
+      ctx.save();
+      ctx.strokeStyle = '#228B22';
+      ctx.lineWidth = 3;
+      ctx.setLineDash([10, 5]);
+      ctx.beginPath();
+      ctx.arc(centerX, centerY, arbustoMejora.aimRange, 0, 2 * Math.PI);
+      ctx.stroke();
+      ctx.setLineDash([]);
+      ctx.restore();
+      
+      // Calcular posición del mouse en el mundo
+      const mouseWorldX = mouseX + offsetX;
+      const mouseWorldY = mouseY + offsetY;
+      const dx = mouseWorldX - localPlayer.x;
+      const dy = mouseWorldY - localPlayer.y;
+      const distToMouse = Math.sqrt(dx * dx + dy * dy);
+      
+      // Limitar la posición del preview al rango máximo
+      let previewX, previewY;
+      if (distToMouse > arbustoMejora.aimRange) {
+        const angle = Math.atan2(dy, dx);
+        previewX = centerX + Math.cos(angle) * arbustoMejora.aimRange;
+        previewY = centerY + Math.sin(angle) * arbustoMejora.aimRange;
+      } else {
+        previewX = mouseX;
+        previewY = mouseY;
+      }
+      
+      // Dibujar área circular del arbusto en la posición del mouse
+      ctx.save();
+      ctx.beginPath();
+      ctx.arc(previewX, previewY, arbustoMejora.radius, 0, 2 * Math.PI);
+      ctx.strokeStyle = '#228B22';
+      ctx.lineWidth = 3;
+      ctx.fillStyle = 'rgba(34, 139, 34, 0.3)'; // Verde semi-transparente
+      ctx.fill();
+      ctx.stroke();
+      
+      // Dibujar espinas decorativas en el preview
+      const spikeCount = 8;
+      ctx.strokeStyle = 'rgba(139, 69, 19, 0.6)';
+      ctx.lineWidth = 2;
+      for (let i = 0; i < spikeCount; i++) {
+        const angle = (Math.PI * 2 * i / spikeCount);
+        const innerRadius = arbustoMejora.radius * 0.7;
+        const outerRadius = arbustoMejora.radius * 0.9;
+        
+        ctx.beginPath();
+        ctx.moveTo(
+          previewX + Math.cos(angle) * innerRadius,
+          previewY + Math.sin(angle) * innerRadius
+        );
+        ctx.lineTo(
+          previewX + Math.cos(angle) * outerRadius,
+          previewY + Math.sin(angle) * outerRadius
+        );
+        ctx.stroke();
+      }
       
       ctx.restore();
     }
@@ -3208,6 +3403,13 @@ function drawMap() {
       ctx.lineWidth = 3;
       ctx.strokeRect(-w/2, -h/2, w, h);
       ctx.setTransform(1, 0, 0, 1, 0, 0); // Reset transform
+    } else if (cast.mejora.id === 'arbusto_espinoso') {
+      // Arbusto espinoso - círculo creciente como tornado
+      ctx.strokeStyle = '#228B22'; // Verde oscuro
+      ctx.lineWidth = 3;
+      ctx.beginPath();
+      ctx.arc(castX, castY, modifiedRadius, 0, 2 * Math.PI);
+      ctx.stroke();
     } else {
       // Cast genérico
       ctx.strokeStyle = 'saddlebrown';
@@ -3267,6 +3469,40 @@ function drawMap() {
         ctx.lineWidth = 2;
         ctx.strokeRect(-(w/2) * progress, -(h/2) * progress, w * progress, h * progress);
         ctx.setTransform(1, 0, 0, 1, 0, 0); // Reset transform
+      } else if (cast.mejora.id === 'arbusto_espinoso') {
+        // Arbusto espinoso - círculo creciente con efecto de espinas
+        ctx.fillStyle = 'rgba(34, 139, 34, 0.4)'; // Verde oscuro transparente
+        ctx.beginPath();
+        ctx.arc(castX, castY, modifiedRadius * progress, 0, 2 * Math.PI);
+        ctx.fill();
+        
+        // Dibujar espinas que crecen con el círculo
+        const spikeCount = 8;
+        ctx.strokeStyle = 'rgba(139, 69, 19, 0.6)'; // Marrón para espinas
+        ctx.lineWidth = 2;
+        for (let j = 0; j < spikeCount; j++) {
+          const angle = (Math.PI * 2 * j / spikeCount);
+          const innerRadius = modifiedRadius * progress * 0.7;
+          const outerRadius = modifiedRadius * progress * 0.9;
+          
+          ctx.beginPath();
+          ctx.moveTo(
+            castX + Math.cos(angle) * innerRadius,
+            castY + Math.sin(angle) * innerRadius
+          );
+          ctx.lineTo(
+            castX + Math.cos(angle) * outerRadius,
+            castY + Math.sin(angle) * outerRadius
+          );
+          ctx.stroke();
+        }
+        
+        // Borde del círculo creciente
+        ctx.strokeStyle = 'rgba(34, 139, 34, 0.8)';
+        ctx.lineWidth = 2;
+        ctx.beginPath();
+        ctx.arc(castX, castY, modifiedRadius * progress, 0, 2 * Math.PI);
+        ctx.stroke();
       } else {
         ctx.fillStyle = 'rgba(139, 69, 19, 0.5)'; // saddlebrown con alpha
         ctx.fillRect(castX - modifiedRadius * progress, castY - modifiedRadius * progress, modifiedRadius * 2 * progress, modifiedRadius * 2 * progress);
@@ -3294,6 +3530,25 @@ function drawMap() {
               skillShot: true
             });
           }
+        }
+      } else if (cast.mejora.id === 'arbusto_espinoso') {
+        // Arbusto espinoso: crear área directamente
+        const localPlayer = players.find(p => p.nick === user.nick);
+        if (localPlayer && cast.player === user.nick) {
+          console.log('Arbusto espinoso: Creando área directamente', cast.position);
+          cancelInvisibilityOnShoot();
+          socket.emit('shootProjectile', {
+            roomId,
+            x: localPlayer.x,
+            y: localPlayer.y,
+            angle: 0,
+            mejoraId: cast.mejora.id,
+            velocidad: cast.mejora.velocidad,
+            owner: cast.player,
+            targetX: cast.position.x,
+            targetY: cast.position.y,
+            skillShot: true
+          });
         }
       } else if (cast.mejora.id === 'ventisca') {
         // Para Ventisca: crear directamente sin proyectil
@@ -3579,6 +3834,213 @@ function drawMap() {
     ctx.restore();
   }
 
+  // Dibujar arbustos espinosos
+  for (let i = activeThornBushes.length - 1; i >= 0; i--) {
+    const bush = activeThornBushes[i];
+    const elapsed = now - bush.createdAt;
+    if (elapsed >= bush.duration) {
+      activeThornBushes.splice(i, 1);
+      continue;
+    }
+    const bushX = bush.x - offsetX;
+    const bushY = bush.y - offsetY;
+    const radius = bush.radius;
+    
+    // Dibujo del arbusto espinoso
+    ctx.save();
+    
+    const time = Date.now() * 0.003;
+    const pulseSize = Math.sin(time * 2) * 0.1 + 1;
+    
+    // Círculo exterior de veneno (pulsante)
+    const outerGradient = ctx.createRadialGradient(bushX, bushY, 0, bushX, bushY, radius * pulseSize);
+    outerGradient.addColorStop(0, 'rgba(34, 139, 34, 0.6)'); // verde oscuro
+    outerGradient.addColorStop(0.4, 'rgba(50, 205, 50, 0.4)'); // verde lima
+    outerGradient.addColorStop(0.7, 'rgba(0, 255, 0, 0.2)'); // verde brillante
+    outerGradient.addColorStop(1, 'rgba(34, 139, 34, 0)');
+    
+    ctx.beginPath();
+    ctx.arc(bushX, bushY, radius * pulseSize, 0, Math.PI * 2);
+    ctx.fillStyle = outerGradient;
+    ctx.fill();
+    
+    // Círculo interior venenoso
+    const innerGradient = ctx.createRadialGradient(bushX, bushY, 0, bushX, bushY, radius * 0.7);
+    innerGradient.addColorStop(0, 'rgba(34, 139, 34, 0.8)');
+    innerGradient.addColorStop(0.5, 'rgba(107, 142, 35, 0.6)');
+    innerGradient.addColorStop(1, 'rgba(34, 139, 34, 0.3)');
+    
+    ctx.beginPath();
+    ctx.arc(bushX, bushY, radius * 0.7, 0, Math.PI * 2);
+    ctx.fillStyle = innerGradient;
+    ctx.shadowColor = '#32CD32';
+    ctx.shadowBlur = 15;
+    ctx.fill();
+    ctx.shadowBlur = 0;
+    
+    // Arbusto central con ramas
+    const branchCount = 8;
+    for (let j = 0; j < branchCount; j++) {
+      const angle = (Math.PI * 2 * j / branchCount) + time * 0.5;
+      const branchLength = radius * (0.5 + Math.sin(time + j) * 0.1);
+      
+      ctx.strokeStyle = 'rgba(85, 107, 47, 0.9)'; // verde oliva oscuro
+      ctx.lineWidth = 4;
+      
+      ctx.beginPath();
+      ctx.moveTo(bushX, bushY);
+      ctx.lineTo(bushX + Math.cos(angle) * branchLength, bushY + Math.sin(angle) * branchLength);
+      ctx.stroke();
+      
+      // Espinas en las ramas
+      const thornsPerBranch = 3;
+      for (let k = 1; k <= thornsPerBranch; k++) {
+        const thornPos = k / (thornsPerBranch + 1);
+        const thornX = bushX + Math.cos(angle) * branchLength * thornPos;
+        const thornY = bushY + Math.sin(angle) * branchLength * thornPos;
+        const thornAngle = angle + Math.PI / 2;
+        const thornLength = 10;
+        
+        ctx.strokeStyle = 'rgba(139, 69, 19, 0.8)'; // marrón para espinas
+        ctx.lineWidth = 2;
+        
+        ctx.beginPath();
+        ctx.moveTo(thornX, thornY);
+        ctx.lineTo(
+          thornX + Math.cos(thornAngle) * thornLength,
+          thornY + Math.sin(thornAngle) * thornLength
+        );
+        ctx.stroke();
+      }
+    }
+    
+    // Partículas de veneno flotantes
+    const particleCount = 12;
+    ctx.fillStyle = 'rgba(0, 255, 0, 0.7)';
+    for (let j = 0; j < particleCount; j++) {
+      const angle = (Math.PI * 2 * j / particleCount) + time * 2;
+      const distance = radius * (0.3 + Math.sin(time * 3 + j) * 0.3);
+      const px = bushX + Math.cos(angle) * distance;
+      const py = bushY + Math.sin(angle) * distance;
+      const particleSize = 3 + Math.sin(time * 4 + j) * 1.5;
+      
+      ctx.beginPath();
+      ctx.arc(px, py, particleSize, 0, Math.PI * 2);
+      ctx.shadowColor = '#00FF00';
+      ctx.shadowBlur = 8;
+      ctx.fill();
+    }
+    
+    ctx.shadowBlur = 0;
+    
+    // Borde exterior punteado (espinoso)
+    ctx.beginPath();
+    ctx.arc(bushX, bushY, radius, 0, Math.PI * 2);
+    ctx.strokeStyle = 'rgba(34, 139, 34, 0.8)';
+    ctx.lineWidth = 2;
+    ctx.setLineDash([5, 5]);
+    ctx.stroke();
+    ctx.setLineDash([]);
+    
+    ctx.restore();
+  }
+
+  // Dibujar nubes de oscuridad (Fragmento de Sombra)
+  for (let i = activeShadowClouds.length - 1; i >= 0; i--) {
+    const cloud = activeShadowClouds[i];
+    const elapsed = now - cloud.createdAt;
+    if (elapsed >= cloud.duration) {
+      activeShadowClouds.splice(i, 1);
+      continue;
+    }
+    const cloudX = cloud.x - offsetX;
+    const cloudY = cloud.y - offsetY;
+    const radius = cloud.radius;
+    
+    // Dibujo de la nube de oscuridad
+    ctx.save();
+    
+    const time = Date.now() * 0.003;
+    const fadeOut = 1 - (elapsed / cloud.duration); // Fade out gradual
+    
+    // Múltiples capas de niebla oscura
+    for (let layer = 0; layer < 3; layer++) {
+      const layerRadius = radius * (1 - layer * 0.2);
+      const layerAlpha = (0.25 - layer * 0.05) * fadeOut;
+      
+      const gradient = ctx.createRadialGradient(cloudX, cloudY, 0, cloudX, cloudY, layerRadius);
+      gradient.addColorStop(0, `rgba(30, 30, 50, ${layerAlpha})`);
+      gradient.addColorStop(0.5, `rgba(20, 20, 35, ${layerAlpha * 0.8})`);
+      gradient.addColorStop(1, 'rgba(0, 0, 0, 0)');
+      
+      ctx.beginPath();
+      ctx.arc(cloudX, cloudY, layerRadius, 0, Math.PI * 2);
+      ctx.fillStyle = gradient;
+      ctx.fill();
+    }
+    
+    // Núcleo oscuro central
+    const coreGradient = ctx.createRadialGradient(cloudX, cloudY, 0, cloudX, cloudY, radius * 0.4);
+    coreGradient.addColorStop(0, `rgba(60, 60, 80, ${0.6 * fadeOut})`);
+    coreGradient.addColorStop(0.5, `rgba(40, 40, 60, ${0.4 * fadeOut})`);
+    coreGradient.addColorStop(1, `rgba(20, 20, 40, ${0.1 * fadeOut})`);
+    
+    ctx.beginPath();
+    ctx.arc(cloudX, cloudY, radius * 0.4, 0, Math.PI * 2);
+    ctx.fillStyle = coreGradient;
+    ctx.fill();
+    
+    // Partículas oscuras flotantes
+    const particleCount = 8;
+    ctx.fillStyle = `rgba(80, 80, 100, ${0.5 * fadeOut})`;
+    for (let j = 0; j < particleCount; j++) {
+      const angle = (Math.PI * 2 * j / particleCount) + time * 1.5;
+      const distance = radius * (0.6 + Math.sin(time * 2 + j) * 0.15);
+      const px = cloudX + Math.cos(angle) * distance;
+      const py = cloudY + Math.sin(angle) * distance;
+      const particleSize = 4 + Math.sin(time * 3 + j) * 2;
+      
+      ctx.beginPath();
+      ctx.arc(px, py, particleSize, 0, Math.PI * 2);
+      ctx.shadowColor = 'rgba(100, 100, 130, 0.8)';
+      ctx.shadowBlur = 10;
+      ctx.fill();
+    }
+    
+    ctx.shadowBlur = 0;
+    
+    // Vórtice espiral (efecto de succión oscura)
+    ctx.strokeStyle = `rgba(100, 100, 130, ${0.3 * fadeOut})`;
+    ctx.lineWidth = 2;
+    for (let s = 0; s < 2; s++) {
+      ctx.beginPath();
+      const spiralAngle = time * 2 + s * Math.PI;
+      const spiralRadius = radius * 0.5;
+      ctx.moveTo(
+        cloudX + Math.cos(spiralAngle) * spiralRadius * 0.3,
+        cloudY + Math.sin(spiralAngle) * spiralRadius * 0.3
+      );
+      ctx.quadraticCurveTo(
+        cloudX + Math.cos(spiralAngle + 0.5) * spiralRadius * 0.7,
+        cloudY + Math.sin(spiralAngle + 0.5) * spiralRadius * 0.7,
+        cloudX + Math.cos(spiralAngle + 1) * spiralRadius,
+        cloudY + Math.sin(spiralAngle + 1) * spiralRadius
+      );
+      ctx.stroke();
+    }
+    
+    // Borde exterior de niebla
+    ctx.beginPath();
+    ctx.arc(cloudX, cloudY, radius, 0, Math.PI * 2);
+    ctx.strokeStyle = `rgba(60, 60, 80, ${0.4 * fadeOut})`;
+    ctx.lineWidth = 1;
+    ctx.setLineDash([8, 8]);
+    ctx.stroke();
+    ctx.setLineDash([]);
+    
+    ctx.restore();
+  }
+
   // Muros negros en los bordes del mundo
   ctx.fillStyle = '#111';
   // Arriba
@@ -3783,6 +4245,41 @@ function handleKeyDown(e) {
             // ✅ Establecer cooldown solo DESPUÉS de enviar (será confirmado por el servidor)
             // El servidor enviará el proyectil de vuelta si es válido, rechazará si es spam
             window.ganchoCooldown = now;
+          }
+        } else if (mejoraE.id === 'arbusto_espinoso') {
+          if (!arbustoEspinosoAiming) {
+            const now = performance.now();
+            if (window.arbusto_espinosoCooldown && now - window.arbusto_espinosoCooldown < mejoraE.cooldown) return;
+            arbustoEspinosoAiming = true;
+            canvas.style.cursor = 'none';
+          } else {
+            // Empezar cast
+            arbustoEspinosoAiming = false;
+            const now = performance.now();
+            if (window.arbusto_espinosoCooldown && now - window.arbusto_espinosoCooldown < mejoraE.cooldown) return;
+            const localPlayer = players.find(p => p.nick === user.nick);
+            if (!localPlayer) return;
+            let offsetX = localPlayer.x - canvas.width / 2;
+            let offsetY = localPlayer.y - canvas.height / 2;
+            
+            const targetX = mouseX + offsetX;
+            const targetY = mouseY + offsetY;
+            const dx = targetX - localPlayer.x;
+            const dy = targetY - localPlayer.y;
+            const dist = Math.sqrt(dx * dx + dy * dy);
+            if (dist > mejoraE.aimRange) return; // Fuera de rango
+            window.arbusto_espinosoCooldown = now; // Iniciar cooldown al empezar cast
+            
+            // Enviar evento al servidor para sincronizar
+            socket.emit('startCast', {
+              roomId,
+              position: { x: targetX, y: targetY },
+              startTime: now,
+              player: user.nick,
+              mejora: mejoraE
+            });
+            
+            canvas.style.cursor = 'default';
           }
         }
       }
@@ -4980,6 +5477,7 @@ socket.on('playersUpdate', (serverPlayers) => {
       local.x = sp.x;
       local.y = sp.y;
       local.speed = sp.speed;
+      local.team = sp.team; // 🎮 Actualizar equipo del jugador
     }
   }
 });
@@ -4990,6 +5488,7 @@ async function renderSala(sala) {
   
   const playersGrid = document.getElementById('playersGrid');
   const roomInfo = document.getElementById('roomInfo');
+  const gameModeInfo = document.getElementById('gameModeInfo');
   
   if (!sala) {
     roomInfo.textContent = 'La sala ya no existe.';
@@ -4999,100 +5498,60 @@ async function renderSala(sala) {
     return;
   }
   
+  // Mostrar modo de juego
+  const modeText = sala.gameMode === 'teams' ? '⚔️ Modo: 2v2 (Equipos)' : '💀 Modo: FFA (Todos contra Todos)';
+  const roundsText = `🎯 Rondas: ${sala.maxRounds || 7}`;
+  gameModeInfo.innerHTML = `<span class="game-mode-badge">${modeText}</span> <span class="rounds-badge">${roundsText}</span>`;
+  
   roomInfo.innerHTML = `<span class="host-badge">👑 Host</span> <strong>${sala.host.nick}</strong>`;
   playersGrid.innerHTML = '';
   
-  // Renderizar los 4 slots de jugadores
+  // Renderizar según el modo de juego
+  if (sala.gameMode === 'teams') {
+    // Modo equipos: renderizar 2 equipos con 2 slots cada uno
+    renderTeamSlots(sala, playersGrid);
+  } else {
+    // Modo FFA: renderizar 4 slots normales
+    renderFFASlots(sala, playersGrid);
+  }
+  
+  // Mostrar botón de iniciar solo para el host
+  if (user.nick === sala.host.nick) {
+    startBtn.style.display = 'inline-flex';
+  } else {
+    startBtn.style.display = 'none';
+  }
+  
+  // Listener para botones de expulsar
+  document.querySelectorAll('.kick-player-btn').forEach(btn => {
+    btn.onclick = async () => {
+      const nickToKick = btn.dataset.nick;
+      await kickPlayer(nickToKick);
+    };
+  });
+  
+  // Listener para botones de cambiar de equipo
+  document.querySelectorAll('.change-team-btn').forEach(btn => {
+    btn.onclick = async () => {
+      const newTeam = parseInt(btn.dataset.team);
+      await changeTeam(sala.id, user.nick, newTeam);
+    };
+  });
+  
+  // Marcar que terminó de renderizar
+  isRendering = false;
+}
+
+// Función para expulsar un jugador de la sala (solo el host puede hacerlo)
+// Función para renderizar slots en modo FFA
+async function renderFFASlots(sala, playersGrid) {
   for (let i = 0; i < 4; i++) {
     const playerCard = document.createElement('div');
     playerCard.className = 'room-player-card';
     
     if (sala.players[i]) {
       const player = sala.players[i];
-      
-      // Fetch player stats
-      try {
-        const response = await fetch(`${SERVER_URL}/stats/${player.nick}`);
-        const data = await response.json();
-        
-        if (data.success) {
-          const stats = data.stats;
-          const nivel = stats.nivel || 1;
-          const exp = stats.exp || 0;
-          const victories = stats.victories || 0;
-          const kills = stats.totalKills || 0;
-          const deaths = stats.totalDeaths || 0;
-          const kda = deaths > 0 ? (kills / deaths).toFixed(2) : kills.toFixed(2);
-          
-          // Calcular progreso de experiencia usando la tabla correcta
-          const expForCurrentLevel = getExpForLevel(nivel);
-          const expForNextLevel = getExpForLevel(nivel + 1);
-          const expProgress = Math.max(0, exp - expForCurrentLevel);
-          const expNeeded = expForNextLevel - expForCurrentLevel;
-          const progressPercent = Math.min(100, (expProgress / expNeeded) * 100);
-          
-          playerCard.innerHTML = `
-            <div class="room-player-card-header">
-              <div class="player-avatar">
-                <img src="ranks/${nivel}.png" alt="Rango ${nivel}" class="rank-badge">
-              </div>
-              <div class="room-player-info">
-                <div class="room-player-name">${player.nick}</div>
-                <div class="room-player-title">⚔️ Guerrero</div>
-              </div>
-              ${player.nick === sala.host.nick ? '<div class="crown-icon">👑</div>' : ''}
-              ${user.nick === sala.host.nick && player.nick !== sala.host.nick ? `<button class="kick-player-btn" data-nick="${player.nick}" title="Expulsar jugador">✕</button>` : ''}
-            </div>
-            <div class="room-player-stats">
-              <div class="stat-row">
-                <div class="stat-item">
-                  <div class="stat-label">🏆 Victorias</div>
-                  <div class="stat-value">${victories}</div>
-                </div>
-                <div class="stat-item">
-                  <div class="stat-label">⚔️ K/D/A</div>
-                  <div class="stat-value">${kda}</div>
-                </div>
-              </div>
-              <div class="exp-bar-container">
-                <div class="exp-bar-label">
-                  <span>💫 Experiencia</span>
-                  <span class="exp-numbers">Exp: ${exp}</span>
-                </div>
-                <div class="exp-bar">
-                  <div class="exp-bar-fill" style="width: ${progressPercent}%">
-                    <div class="exp-bar-shine"></div>
-                  </div>
-                </div>
-              </div>
-            </div>
-            <div class="room-player-status ready">
-              <span class="status-dot"></span> Listo
-            </div>
-          `;
-        }
-      } catch (error) {
-        console.error('Error fetching player stats:', error);
-        // Renderizado básico si falla la petición
-        const nivel = player.nivel || 1;
-        playerCard.innerHTML = `
-          <div class="room-player-card-header">
-            <div class="player-avatar">
-              <img src="ranks/${nivel}.png" alt="Rango ${nivel}" class="rank-badge">
-            </div>
-            <div class="room-player-info">
-              <div class="room-player-name">${player.nick}</div>
-              <div class="room-player-title">⚔️ Guerrero</div>
-            </div>
-            ${player.nick === sala.host.nick ? '<div class="crown-icon">👑</div>' : ''}
-            ${user.nick === sala.host.nick && player.nick !== sala.host.nick ? `<button class="kick-player-btn" data-nick="${player.nick}" title="Expulsar jugador">✕</button>` : ''}
-          </div>
-          <div class="room-player-status ready">
-            <span class="status-dot"></span> Listo
-          </div>
-        `;
-      }
-      
+      await renderPlayerCard(playerCard, player, sala);
       playerCard.classList.add('occupied');
     } else {
       // Slot vacante
@@ -5107,29 +5566,204 @@ async function renderSala(sala) {
     
     playersGrid.appendChild(playerCard);
   }
-  
-  // Mostrar botón de iniciar solo para el host
-  if (user.nick === sala.host.nick) {
-    startBtn.style.display = 'inline-flex';
-  } else {
-    startBtn.style.display = 'none';
-  }
-  
-  // Agregar event listeners para los botones de kick
-  const kickButtons = document.querySelectorAll('.kick-player-btn');
-  kickButtons.forEach(btn => {
-    btn.addEventListener('click', (e) => {
-      e.stopPropagation();
-      const nickToKick = btn.getAttribute('data-nick');
-      kickPlayer(nickToKick);
-    });
-  });
-  
-  // Marcar que terminó el renderizado
-  isRendering = false;
 }
 
-// Función para expulsar un jugador de la sala (solo el host puede hacerlo)
+// Función para renderizar slots en modo Equipos
+async function renderTeamSlots(sala, playersGrid) {
+  // Separar jugadores por equipo
+  const team1Players = sala.players.filter(p => p.team === 1);
+  const team2Players = sala.players.filter(p => p.team === 2);
+  
+  // Crear contenedor para Equipo 1 (Azul)
+  const team1Container = document.createElement('div');
+  team1Container.className = 'team-container team-blue';
+  team1Container.innerHTML = '<div class="team-header"><span class="team-icon">🔵</span> Equipo Azul</div>';
+  
+  // Renderizar 2 slots para equipo 1
+  for (let i = 0; i < 2; i++) {
+    const playerCard = document.createElement('div');
+    playerCard.className = 'room-player-card team-slot-blue';
+    
+    if (team1Players[i]) {
+      const player = team1Players[i];
+      await renderPlayerCard(playerCard, player, sala, 1);
+      playerCard.classList.add('occupied');
+    } else {
+      // Slot vacante
+      playerCard.classList.add('vacant');
+      playerCard.innerHTML = `
+        <div class="vacant-slot">
+          <div class="vacant-icon">👤</div>
+          <div class="vacant-text">Esperando jugador...</div>
+          ${canJoinTeam(sala, 1) ? `<button class="join-team-btn" data-team="1">Unirse</button>` : ''}
+        </div>
+      `;
+    }
+    
+    team1Container.appendChild(playerCard);
+  }
+  
+  // Crear contenedor para Equipo 2 (Rojo)
+  const team2Container = document.createElement('div');
+  team2Container.className = 'team-container team-red';
+  team2Container.innerHTML = '<div class="team-header"><span class="team-icon">🔴</span> Equipo Rojo</div>';
+  
+  // Renderizar 2 slots para equipo 2
+  for (let i = 0; i < 2; i++) {
+    const playerCard = document.createElement('div');
+    playerCard.className = 'room-player-card team-slot-red';
+    
+    if (team2Players[i]) {
+      const player = team2Players[i];
+      await renderPlayerCard(playerCard, player, sala, 2);
+      playerCard.classList.add('occupied');
+    } else {
+      // Slot vacante
+      playerCard.classList.add('vacant');
+      playerCard.innerHTML = `
+        <div class="vacant-slot">
+          <div class="vacant-icon">👤</div>
+          <div class="vacant-text">Esperando jugador...</div>
+          ${canJoinTeam(sala, 2) ? `<button class="join-team-btn" data-team="2">Unirse</button>` : ''}
+        </div>
+      `;
+    }
+    
+    team2Container.appendChild(playerCard);
+  }
+  
+  playersGrid.appendChild(team1Container);
+  playersGrid.appendChild(team2Container);
+  
+  // Agregar event listeners para botones de unirse a equipo
+  document.querySelectorAll('.join-team-btn').forEach(btn => {
+    btn.onclick = async () => {
+      const newTeam = parseInt(btn.dataset.team);
+      await changeTeam(sala.id, user.nick, newTeam);
+    };
+  });
+}
+
+// Función auxiliar para renderizar una tarjeta de jugador
+async function renderPlayerCard(playerCard, player, sala, teamNumber = null) {
+  try {
+    const response = await fetch(`${SERVER_URL}/stats/${player.nick}`);
+    const data = await response.json();
+    
+    if (data.success) {
+      const stats = data.stats;
+      const nivel = stats.nivel || 1;
+      const exp = stats.exp || 0;
+      const victories = stats.victories || 0;
+      const kills = stats.totalKills || 0;
+      const deaths = stats.totalDeaths || 0;
+      const kda = deaths > 0 ? (kills / deaths).toFixed(2) : kills.toFixed(2);
+      
+      const expForCurrentLevel = getExpForLevel(nivel);
+      const expForNextLevel = getExpForLevel(nivel + 1);
+      const expProgress = Math.max(0, exp - expForCurrentLevel);
+      const expNeeded = expForNextLevel - expForCurrentLevel;
+      const progressPercent = Math.min(100, (expProgress / expNeeded) * 100);
+      
+      // Botón de cambio de equipo (solo en modo teams y si el jugador es el usuario actual)
+      const changeTeamBtn = teamNumber && player.nick === user.nick 
+        ? `<button class="change-team-btn" data-team="${teamNumber === 1 ? 2 : 1}" title="Cambiar de equipo">🔄</button>` 
+        : '';
+      
+      playerCard.innerHTML = `
+        <div class="room-player-card-header">
+          <div class="player-avatar">
+            <img src="ranks/${nivel}.png" alt="Rango ${nivel}" class="rank-badge">
+          </div>
+          <div class="room-player-info">
+            <div class="room-player-name">${player.nick}</div>
+            <div class="room-player-title">⚔️ Guerrero</div>
+          </div>
+          ${player.nick === sala.host.nick ? '<div class="crown-icon">👑</div>' : ''}
+          ${changeTeamBtn}
+          ${user.nick === sala.host.nick && player.nick !== sala.host.nick ? `<button class="kick-player-btn" data-nick="${player.nick}" title="Expulsar jugador">✕</button>` : ''}
+        </div>
+        <div class="room-player-stats">
+          <div class="stat-row">
+            <div class="stat-item">
+              <div class="stat-label">🏆 Victorias</div>
+              <div class="stat-value">${victories}</div>
+            </div>
+            <div class="stat-item">
+              <div class="stat-label">⚔️ K/D/A</div>
+              <div class="stat-value">${kda}</div>
+            </div>
+          </div>
+          <div class="exp-bar-container">
+            <div class="exp-bar-label">
+              <span>💫 Experiencia</span>
+              <span class="exp-numbers">Exp: ${exp}</span>
+            </div>
+            <div class="exp-bar">
+              <div class="exp-bar-fill" style="width: ${progressPercent}%">
+                <div class="exp-bar-shine"></div>
+              </div>
+            </div>
+          </div>
+        </div>
+        <div class="room-player-status ready">
+          <span class="status-dot"></span> Listo
+        </div>
+      `;
+    }
+  } catch (error) {
+    console.error('Error fetching player stats:', error);
+    const nivel = player.nivel || 1;
+    
+    const changeTeamBtn = teamNumber && player.nick === user.nick 
+      ? `<button class="change-team-btn" data-team="${teamNumber === 1 ? 2 : 1}" title="Cambiar de equipo">🔄</button>` 
+      : '';
+    
+    playerCard.innerHTML = `
+      <div class="room-player-card-header">
+        <div class="player-avatar">
+          <img src="ranks/${nivel}.png" alt="Rango ${nivel}" class="rank-badge">
+        </div>
+        <div class="room-player-info">
+          <div class="room-player-name">${player.nick}</div>
+          <div class="room-player-title">⚔️ Guerrero</div>
+        </div>
+        ${player.nick === sala.host.nick ? '<div class="crown-icon">👑</div>' : ''}
+        ${changeTeamBtn}
+        ${user.nick === sala.host.nick && player.nick !== sala.host.nick ? `<button class="kick-player-btn" data-nick="${player.nick}" title="Expulsar jugador">✕</button>` : ''}
+      </div>
+      <div class="room-player-status ready">
+        <span class="status-dot"></span> Listo
+      </div>
+    `;
+  }
+}
+
+// Función para verificar si el jugador actual puede unirse a un equipo
+function canJoinTeam(sala, team) {
+  const currentPlayer = sala.players.find(p => p.nick === user.nick);
+  if (!currentPlayer) return true; // Si no está en la sala, puede unirse
+  return currentPlayer.team !== team; // Puede unirse si no está ya en ese equipo
+}
+
+// Función para cambiar de equipo
+async function changeTeam(roomId, nick, newTeam) {
+  try {
+    const response = await fetch(`${SERVER_URL}/change-team`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ roomId, nick, newTeam })
+    });
+    const data = await response.json();
+    if (!data.success) {
+      alert(data.error || 'Error al cambiar de equipo');
+    }
+  } catch (error) {
+    console.error('Error al cambiar de equipo:', error);
+    alert('Error de conexión');
+  }
+}
+
 async function kickPlayer(nickToKick) {
   if (!confirm(`¿Estás seguro de que quieres expulsar a ${nickToKick} de la sala?`)) {
     return;
@@ -5181,6 +5815,12 @@ function getExpForLevel(level) {
     14: 24700, // Nivel 14: de 24700 a 32499 exp (7800 exp necesaria)
     15: 32500, // Nivel 15: de 32500 a 39999 exp (7500 exp necesaria)
     16: 40000, // Nivel 16+: más de 40000 exp
+    17: 48650,
+    18: 58500,
+    19: 69500,
+    20: 82350,
+    21: 96550,
+    22: 113050
   };
   
   // Si el nivel está en la tabla, retornar el valor
@@ -5193,25 +5833,25 @@ function getExpForLevel(level) {
 }
 
 async function cargarSala() {
-  console.log('🚀 [DEBUG] cargarSala() iniciada, roomId:', roomId);
+  // ...
   // Resetear estado de rondas al cargar sala (siempre empezar con Round 1)
   mostrarSoloProyectilQ = false;
   currentRound = 1;
   // No mostrar HUD de rondas aquí, solo cuando se inicie la partida
   try {
-  console.log('🔍 [DEBUG] Haciendo fetch a /rooms...');
+  // ...
   const res = await fetch(`${SERVER_URL}/rooms`);
     const data = await res.json();
-    console.log('📦 [DEBUG] Respuesta recibida:', data);
+  // ...
     if (data.success) {
       sala = data.salas.find(s => s.id === roomId);
-      console.log('🏠 [DEBUG] Sala encontrada:', sala);
+  // ...
       renderSala(sala);
       if (sala) {
         // Unirse a la sala de sockets con stats calculadas
         // Usar getUser de ShopSystem para obtener datos migrados
         const user = window.ShopSystem ? window.ShopSystem.getUser() : JSON.parse(localStorage.getItem('batlesd_user'));
-        console.log('👤 [DEBUG] Usuario:', user);
+  // ...
         
         // Obtener color del jugador (items son solo cosméticos, sin stats)
         let playerColor = '#f4c2a0';
@@ -5221,20 +5861,16 @@ async function cargarSala() {
           playerColor = window.ShopSystem.getEquippedColor(user.equipped);
           
           // Debug: mostrar color equipado
-          console.log('🎨 Color equipado:', user.equipped.color);
-          console.log('🎨 Color hex:', playerColor);
+          // ...
         }
         
-        console.log('🟡 [DEBUG FRONTEND] Emitiendo joinRoom:', {
-          roomId,
-          nick: user.nick,
-          color: playerColor
-        });
+        // ...
         socket.emit('joinRoom', { 
           roomId, 
           color: playerColor, 
           nick: user.nick,
-          stats: playerStats // Enviar stats base (sin modificadores de items)
+          stats: playerStats, // Enviar stats base (sin modificadores de items)
+          equipped: user.equipped // Enviar items equipados (rostro, etc.)
         });
       }
     }
@@ -5247,9 +5883,9 @@ async function cargarSala() {
   }
 }
 
-console.log('⚡ [DEBUG] Antes de llamar cargarSala(), roomId:', roomId, 'user:', user?.nick);
+// ...
 cargarSala();
-console.log('✅ [DEBUG] Después de llamar cargarSala()');
+// ...
 
 // Botón iniciar
 startBtn.addEventListener('click', () => {
@@ -5520,6 +6156,8 @@ socket.on('roundEnded', async (data) => {
   activeMuddyGrounds = []; // Clear muddy grounds
   activeVentiscas = []; // ❄️ Clear ventiscas
   activeSacredGrounds = []; // Clear sacred grounds
+  activeThornBushes = []; // Clear thorn bushes
+  activeShadowClouds = []; // 🌑 Clear shadow clouds
   tornados = []; // 🧹 Limpiar tornados al final de cada ronda
   activeLasers = []; // 🧹 Limpiar láseres al final de cada ronda
   // Limpiar solo muros TEMPORALES (de habilidades), mantener bloques del mapa
@@ -5539,28 +6177,36 @@ socket.on('roundEnded', async (data) => {
     await mostrarGanadorRonda(data.winner);
   }
   
-  // 🔥 IMPORTANTE: Esperar a que el servidor envíe availableUpgrades para ronda 4
-  // Para rondas 2, 3, 5, 6, 7: Mostrar HUD de aumentos (sin usar availableUpgrades)
-  if (currentRound >= 2 && currentRound <= 7 && currentRound !== 4) {
+  // 🎯 Calcular en qué ronda se da la habilidad F (aproximadamente a la mitad)
+  const habilidadFRound = Math.floor(maxRounds / 2);
+  
+  // 🔥 IMPORTANTE: Esperar a que el servidor envíe availableUpgrades para ronda de habilidad F
+  // Para otras rondas (excepto la 1): Mostrar HUD de aumentos (sin usar availableUpgrades)
+  if (currentRound >= 2 && currentRound <= maxRounds && currentRound !== habilidadFRound) {
     mostrarHUDAumentosRonda2();
   }
   
-  // Para ronda 4: Esperar evento availableUpgrades del servidor que activará mostrarHUDHabilidadesF
+  // Para ronda de habilidad F: Esperar evento availableUpgrades del servidor que activará mostrarHUDHabilidadesF
   // (Ver socket.on('availableUpgrades') más abajo)
-  
-  if (currentRound >= 6) { // Para rondas 6+ mostrar proyectilQ
-    // mostrarHUDMejoras(true);
-  }
   
   // Limpiar explosiones
   explosions.length = 0;
 });
 
 // Evento de inicio de ronda: resetear modo espectador
-socket.on('roundStarted', () => {
+socket.on('roundStarted', (data) => {
   spectatorTarget = null; // Volver al jugador local al iniciar nueva ronda
   const spectMsg = document.getElementById('spectatorMsg');
   if (spectMsg) spectMsg.remove();
+  
+  // Actualizar ronda actual si se recibe del servidor
+  if (data && data.round) {
+    currentRound = data.round;
+    // Actualizar el HUD de rondas si existe
+    if (roundHUD) {
+      roundHUD.textContent = `Ronda ${currentRound}/${maxRounds}`;
+    }
+  }
 });
 
 // Evento de fin del juego: mostrar stats finales
@@ -5571,6 +6217,8 @@ socket.on('gameEnded', (data) => {
   activeMuddyGrounds = [];
   activeVentiscas = []; // ❄️ Limpiar ventiscas
   activeSacredGrounds = [];
+  activeThornBushes = [];
+  activeShadowClouds = []; // 🌑 Limpiar nubes de sombra
   tumbas = [];
   explosions.length = 0;
   if (window.murosDePiedra) {
@@ -5681,6 +6329,24 @@ socket.on('sacredGroundCreated', (data) => {
   console.log('🌿 Frontend recibió sacredGroundCreated:', data);
   activeSacredGrounds.push({ ...data, createdAt: Date.now() });
   console.log('✅ activeSacredGrounds ahora tiene:', activeSacredGrounds.length, 'elementos');
+});
+
+socket.on('thornBushCreated', (data) => {
+  console.log('🌿 Frontend recibió thornBushCreated:', data);
+  activeThornBushes.push({ ...data, createdAt: Date.now() });
+  console.log('✅ activeThornBushes ahora tiene:', activeThornBushes.length, 'elementos');
+});
+
+socket.on('shadowCloudCreated', (data) => {
+  console.log('🌑 Frontend recibió shadowCloudCreated:', data);
+  activeShadowClouds.push({ ...data, createdAt: Date.now() });
+  console.log('✅ activeShadowClouds ahora tiene:', activeShadowClouds.length, 'elementos');
+});
+
+socket.on('shadowCloudExpired', (data) => {
+  // Remover nube expirada
+  activeShadowClouds = activeShadowClouds.filter(c => !(c.x === data.x && c.y === data.y));
+  console.log('🌑 Nube de sombra expirada y removida');
 });
 
 socket.on('shieldApplied', (data) => {
@@ -6647,3 +7313,27 @@ window.debugJugador = function() {
   
   console.log('═══════════════════════════════════════');
 };
+
+// Función para mostrar notificaciones HUD
+function mostrarNotificacion(mensaje, tipo = 'info') {
+  // Crear elemento de notificación
+  const notificacion = document.createElement('div');
+  notificacion.className = `hud-notification ${tipo}`;
+  notificacion.textContent = mensaje;
+  
+  // Agregar al body
+  document.body.appendChild(notificacion);
+  
+  // Animar entrada
+  setTimeout(() => {
+    notificacion.classList.add('show');
+  }, 10);
+  
+  // Remover después de 4 segundos
+  setTimeout(() => {
+    notificacion.classList.remove('show');
+    setTimeout(() => {
+      notificacion.remove();
+    }, 300);
+  }, 4000);
+}

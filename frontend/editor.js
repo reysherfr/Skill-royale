@@ -2,6 +2,9 @@
 // EDITOR DE MAPAS - SKILL CLASH
 // ============================================
 
+// Determine server URL based on environment
+// SERVER_URL se carga desde config.js
+
 // Referencias al canvas y contexto
 const canvas = document.getElementById('editorCanvas');
 const ctx = canvas.getContext('2d');
@@ -858,7 +861,7 @@ export function getMapByName(name) {
 `;
 
   // Enviar al servidor para guardar
-  const response = await fetch('http://localhost:3000/save-map', {
+  const response = await fetch(`${SERVER_URL}/save-map`, {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json'

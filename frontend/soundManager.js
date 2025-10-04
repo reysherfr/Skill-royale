@@ -233,7 +233,7 @@ function loadAbilitySounds() {
   Object.entries(ABILITY_SOUNDS).forEach(([id, url]) => {
     soundManager.loadSound(id, url);
   });
-  console.log('✅ Sonidos de habilidades cargados:', Object.keys(ABILITY_SOUNDS).length);
+  // ...
 }
 
 // Función para reproducir sonido de habilidad

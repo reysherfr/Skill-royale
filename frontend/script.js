@@ -1,5 +1,5 @@
 // Determine server URL based on environment
-const SERVER_URL = window.location.hostname === 'localhost' ? 'http://localhost:3000' : 'http://138.68.250.124:3000';
+// SERVER_URL se carga desde config.js
 
 // ============================================
 // MANEJO DE PESTAÑAS (LOGIN / REGISTRO)
